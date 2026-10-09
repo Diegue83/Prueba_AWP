@@ -121,10 +121,10 @@ public class ClienteValidador {
     /** Campos comunes del alta y de la actualización. Devuelve la fecha de nacimiento ya convertida. */
     private LocalDate validarDatosModificables(ClienteDatos datos, List<String> errores) {
         // Datos personales
-        Validaciones.soloLetras("nombre", datos.getNombre(), true, 2, 50, errores);
-        Validaciones.soloLetras("segundoNombre", datos.getSegundoNombre(), false, 2, 50, errores);
-        Validaciones.soloLetras("apellidoPaterno", datos.getApellidoPaterno(), true, 2, 50, errores);
-        Validaciones.soloLetras("apellidoMaterno", datos.getApellidoMaterno(), true, 2, 50, errores);
+        Validaciones.soloLetras("nombre", datos.getNombre(), true, 3, 50, errores);
+        Validaciones.soloLetras("segundoNombre", datos.getSegundoNombre(), false, 3, 50, errores);
+        Validaciones.soloLetras("apellidoPaterno", datos.getApellidoPaterno(), true, 3, 50, errores);
+        Validaciones.soloLetras("apellidoMaterno", datos.getApellidoMaterno(), true, 3, 50, errores);
         LocalDate nacimiento = Validaciones.fechaNacimiento("fechaNacimiento", datos.getFechaNacimiento(), errores);
         Validaciones.catalogo("sexo", datos.getSexo(), Sexo.class, errores);
         Validaciones.soloLetras("nacionalidad", datos.getNacionalidad(), true, 2, 40, errores);

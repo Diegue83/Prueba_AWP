@@ -26,7 +26,7 @@ public final class Validaciones {
 
     public static final int EDAD_MINIMA = 18;
 
-    private static final String LETRAS = "A-Za-zÁÉÍÓÚÜÑáéíóúüñ";
+    private static final String LETRAS = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]";
 
     /** Palabras de solo letras separadas por un espacio. */
     private static final Pattern SOLO_LETRAS = Pattern.compile("^[" + LETRAS + "]+( [" + LETRAS + "]+)*$");
