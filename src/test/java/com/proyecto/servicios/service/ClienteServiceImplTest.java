@@ -8,6 +8,7 @@ import com.proyecto.servicios.enums.Sexo;
 import com.proyecto.servicios.exception.ClienteInactivoException;
 import com.proyecto.servicios.exception.ClienteNoEncontradoException;
 import com.proyecto.servicios.exception.ClienteYaRegistradoException;
+import com.proyecto.servicios.exception.AccesoDenegadoException;
 import com.proyecto.servicios.exception.CurpDuplicadaException;
 import com.proyecto.servicios.exception.RfcDuplicadoException;
 import com.proyecto.servicios.exception.ValidacionException;
@@ -18,6 +19,7 @@ import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.service.Impl.ClienteServiceImpl;
+import com.proyecto.servicios.security.ControlAcceso;
 import com.proyecto.servicios.validation.ClienteValidador;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +43,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.proyecto.servicios.service.NacionalidadService;
@@ -56,6 +60,8 @@ class ClienteServiceImplTest {
     private CuentaRepository cuentaRepository;
     @Mock
     private NacionalidadService nacionalidadService;
+    @Mock
+    private ControlAcceso controlAcceso;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
     private OnboardingProperties propiedades;
@@ -67,7 +73,7 @@ class ClienteServiceImplTest {
         propiedades.setSaldoInicial(new BigDecimal("500"));
         lenient().when(nacionalidadService.obtenerNombreValido(anyString())).thenReturn("Mexicana");
         servicio = new ClienteServiceImpl(clienteRepository, cuentaRepository, new ClienteMapper(),
-                new ClienteValidador(), passwordEncoder, propiedades, nacionalidadService);
+                new ClienteValidador(), passwordEncoder, propiedades, nacionalidadService, controlAcceso);
     }
 
     // ------------------------------ Alta ------------------------------
@@ -117,6 +123,17 @@ class ClienteServiceImplTest {
                 .anyMatch(detalle -> detalle.startsWith("ingresoMensual:"))
                 .anyMatch(detalle -> detalle.startsWith("domicilio.codigoPostal:"))
                 .anyMatch(detalle -> detalle.startsWith("contrasena:"));
+        verify(clienteRepository, never()).save(any());
+    }
+
+    @Test
+    void registrarConCuerpoNuloDevuelveErrorDeValidacion() {
+        assertThatThrownBy(() -> servicio.registrar(null))
+                .isInstanceOf(ValidacionException.class)
+                .hasMessage("La información enviada no es válida")
+                .hasFieldOrPropertyWithValue("detalles",
+                        java.util.List.of("cuerpo: no puede ser null; envía un objeto JSON con los datos requeridos"));
+
         verify(clienteRepository, never()).save(any());
     }
 
@@ -246,6 +263,24 @@ class ClienteServiceImplTest {
 
         assertThatThrownBy(() -> servicio.consultarPorId(99))
                 .isInstanceOf(ClienteNoEncontradoException.class);
+    }
+
+    @Test
+    void consultarPorIdDeOtroClienteSeDeniegaAntesDeConsultarLaBaseDeDatos() {
+        doThrow(new AccesoDenegadoException()).when(controlAcceso).verificarPropietario(2);
+
+        assertThatThrownBy(() -> servicio.consultarPorId(2))
+                .isInstanceOf(AccesoDenegadoException.class);
+
+        verify(clienteRepository, never()).buscarPorId(2);
+    }
+
+    @Test
+    void consultarTodosSoloDevuelveElClienteAutenticado() {
+        when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
+        when(clienteRepository.buscarPorId(1)).thenReturn(Optional.empty());
+
+        assertThat(servicio.consultarTodos()).isEmpty();
     }
 
     @Test

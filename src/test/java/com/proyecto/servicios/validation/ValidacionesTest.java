@@ -34,6 +34,30 @@ class ValidacionesTest {
     }
 
     @Test
+    void nombreInvalidoDescribeLongitudYCaracteresEsperados() {
+        Validaciones.soloLetras("nombre", "A1", true, 2, 50, errores);
+
+        assertThat(errores)
+                .contains("nombre: solo admite letras y espacios (se permiten acentos y ñ)");
+    }
+
+    @Test
+    void campoDemasiadoCortoIndicaElRangoYLaLongitudRecibida() {
+        Validaciones.soloLetras("nombre", "A", true, 2, 50, errores);
+
+        assertThat(errores).contains("nombre: debe tener entre 2 y 50 caracteres; se recibieron 1");
+    }
+
+    @Test
+    void correoInvalidoExplicaElFormatoEsperado() {
+        Validaciones.correo("correo", "sin-arroba", errores);
+
+        assertThat(errores).contains(
+                "correo: formato inválido; usa el formato usuario@dominio.extensión "
+                        + "(por ejemplo, nombre@correo.com)");
+    }
+
+    @Test
     void campoOpcionalVacioNoGeneraError() {
         Validaciones.soloLetras("segundoNombre", null, false, 2, 50, errores);
         Validaciones.telefono("telefonoAlterno", null, false, errores);

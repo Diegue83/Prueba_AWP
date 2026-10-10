@@ -100,7 +100,12 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
 - **Consultas JPQL con `@Query`** y `JOIN FETCH`: todo sale en un solo `SELECT`. El saldo se consulta con
   una proyección que trae solo esa columna.
 - **Login.** La contraseña se guarda como hash BCrypt (nunca en claro ni en las respuestas). Errores
-  distintos para correo no encontrado y contraseña errónea.
+  distintos para correo no encontrado y contraseña errónea. Al iniciar sesión se entrega un token
+  Bearer firmado y con expiración.
+- **Autorización.** Las rutas de clientes y cuentas requieren `Authorization: Bearer <token>`, salvo
+  `POST /clientes` (alta). El token identifica al cliente; las consultas y modificaciones por ID
+  comprueban que el recurso pertenezca a ese cliente. Los listados solo devuelven los recursos propios.
+  El login, el alta y el catálogo de nacionalidades son públicos.
 - **Excepciones.** Todas heredan de `NegocioException`, que lleva su código HTTP, su clave y sus detalles;
   `GlobalExceptionHandler` las traduce a un mismo formato JSON.
 
@@ -165,12 +170,20 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
 | GET | `/cuentas/{numeroCuenta}/saldo` | Saldo de una cuenta | 200 |
 | POST | `/login` | Inicio de sesión con correo y contraseña | 200 |
 
+En todas las rutas protegidas se debe enviar `Authorization: Bearer <token>` con el token recibido
+en el login. Las operaciones sobre `/clientes/{id}` y `/cuentas/{numeroCuenta}` solo se autorizan
+para el titular autenticado; de lo contrario responden `403 ACCESO_DENEGADO`. La ausencia de token,
+un token inválido o expirado responden `401 NO_AUTENTICADO`. Los endpoints de listados de clientes
+y cuentas requieren token y devuelven únicamente los recursos de ese titular.
+
 ### Errores
 
 | HTTP | Clave | Cuándo |
 |---|---|---|
 | 400 | `ERROR_VALIDACION` | Cualquier dato inválido, campo desconocido o JSON mal formado |
 | 401 | `CONTRASENA_INCORRECTA` | Login: contraseña errónea |
+| 401 | `NO_AUTENTICADO` | Falta un token Bearer válido o expiró |
+| 403 | `ACCESO_DENEGADO` | El token es válido, pero el recurso pertenece a otro cliente |
 | 404 | `CORREO_NO_ENCONTRADO` | Login: correo no encontrado |
 | 404 | `CLIENTE_NO_ENCONTRADO` / `CUENTA_NO_ENCONTRADA` | Consulta sin resultado |
 | 409 | `CURP_DUPLICADA` / `RFC_DUPLICADO` / `CLIENTE_YA_REGISTRADO` | Duplicados |
@@ -188,6 +201,12 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
   ]
 }
 ```
+
+Los errores de validación incluyen una lista `detalles` por campo, con el requisito concreto
+(formato, longitud, rango u opciones admitidas). Por ejemplo, un correo inválido indica el patrón
+esperado; un tipo incompatible en JSON señala la ruta del campo y el tipo requerido. Si el cuerpo
+es `null`, la respuesta indica que debe enviarse un objeto JSON. Las respuestas no repiten
+contraseñas ni otros valores enviados.
 
 ### Ejemplo de alta (POST /clientes)
 
@@ -233,9 +252,11 @@ Para el `PUT /clientes/{id}` se envía el mismo JSON **sin** `curp`, `rfc` ni `c
 
 1. Crear la base vacía: `CREATE DATABASE prueba_onboarding;`
 2. Revisar usuario, contraseña y nombre de la base en `src/main/resources/application.properties`.
-3. `./gradlew bootRun` (Flyway crea las tablas al arrancar).
-4. Abrir `http://localhost:8081/swagger-ui.html`.
-5. Pruebas unitarias: `./gradlew test`.
+3. Definir `SEGURIDAD_JWT_SECRETO` con un secreto de al menos 32 caracteres; no lo guardes en el
+   repositorio.
+4. `./gradlew bootRun` (Flyway crea las tablas al arrancar).
+5. Abrir `http://localhost:8081/swagger-ui.html`.
+6. Pruebas unitarias: `./gradlew test`.
 
 ## 9. Pruebas sugeridas para las evidencias
 
@@ -257,3 +278,7 @@ Para el `PUT /clientes/{id}` se envía el mismo JSON **sin** `curp`, `rfc` ni `c
 | 14 | Login de un cliente dado de baja | 409 `CLIENTE_INACTIVO` |
 | 15 | Consultas por CURP, RFC, correo, cuenta, saldo, activos y rango de fechas | 200 |
 | 16 | Id o cuenta inexistentes | 404 |
+| 17 | Consultar, actualizar o dar de baja otro cliente por ID | 403 `ACCESO_DENEGADO` |
+| 18 | Consultar la cuenta de otro cliente o su saldo | 403 `ACCESO_DENEGADO` |
+| 19 | Consultar rutas protegidas sin token, con token inválido o expirado | 401 `NO_AUTENTICADO` |
+| 20 | Consultar listados con un token válido | Solo recursos del titular |
