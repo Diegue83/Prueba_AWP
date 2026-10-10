@@ -8,5 +8,12 @@
       <jdbc-url>jdbc:postgresql://localhost:5432/gestopago3</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="gestopago_dpei@dpg-db4non0m7kps73aoa25g-a.oregon-postgres.render.com" uuid="96f98548-a0da-4b36-aacc-862e5b9f9e76">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://dpg-db4non0m7kps73aoa25g-a.oregon-postgres.render.com:5432/gestopago_dpei</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
