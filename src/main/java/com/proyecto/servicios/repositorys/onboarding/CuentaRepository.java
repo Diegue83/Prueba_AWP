@@ -20,6 +20,10 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Integer> {
     @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente WHERE cu.estatus = :estatus ORDER BY cu.id")
     List<Cuenta> buscarPorEstatus(@Param("estatus") EstatusCuenta estatus);
 
+    @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente WHERE cu.estatus = :estatus AND cu.cliente.id = :clienteId ORDER BY cu.id")
+    List<Cuenta> buscarPorEstatusYCliente(@Param("estatus") EstatusCuenta estatus,
+                                          @Param("clienteId") Integer clienteId);
+
     /** Proyección: trae únicamente la columna saldo, no la cuenta completa. */
     @Query("SELECT cu.saldo FROM Cuenta cu WHERE cu.numeroCuenta = :numeroCuenta")
     Optional<BigDecimal> consultarSaldo(@Param("numeroCuenta") String numeroCuenta);

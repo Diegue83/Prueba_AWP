@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.proyecto.servicios.security.TokenService;
 
 @Service
 @Slf4j
@@ -27,15 +28,20 @@ public class LoginServiceImpl implements LoginService {
     private final ClienteMapper clienteMapper;
     private final ClienteValidador validador;
     private final PasswordEncoder passwordEncoder;
+    private final TokenService tokenService;
+
 
     public LoginServiceImpl(ClienteRepository clienteRepository,
                             ClienteMapper clienteMapper,
                             ClienteValidador validador,
-                            PasswordEncoder passwordEncoder) {
+                            PasswordEncoder passwordEncoder,
+                            TokenService tokenService
+    ) {
         this.clienteRepository = clienteRepository;
         this.clienteMapper = clienteMapper;
         this.validador = validador;
         this.passwordEncoder = passwordEncoder;
+        this.tokenService = tokenService;
     }
 
     /**
@@ -82,6 +88,9 @@ public class LoginServiceImpl implements LoginService {
         respuesta.setCorreo(cliente.getCorreo());
         respuesta.setNumeroCuenta(cliente.getCuenta().getNumeroCuenta());
         respuesta.setUltimoAcceso(cliente.getAcceso().getUltimoAcceso());
+        respuesta.setToken(tokenService.generar(cliente.getId()));
+        respuesta.setTipoToken("Bearer");
+        respuesta.setExpiraEnMinutos(tokenService.getMinutosVigencia());
         return respuesta;
     }
 }

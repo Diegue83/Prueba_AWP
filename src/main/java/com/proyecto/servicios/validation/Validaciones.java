@@ -68,12 +68,14 @@ public final class Validaciones {
 
     /** Solo letras y espacios, con longitud entre min y max. */
     public static void soloLetras(String campo, String valor, boolean obligatorio, int min, int max, List<String> errores) {
-        texto(campo, valor, obligatorio, min, max, SOLO_LETRAS, "solo admite letras y espacios", errores);
+        texto(campo, valor, obligatorio, min, max, SOLO_LETRAS,
+                "solo admite letras y espacios (se permiten acentos y ñ)", errores);
     }
 
     /** Letras, dígitos y puntuación básica, con longitud entre min y max. */
     public static void textoGeneral(String campo, String valor, boolean obligatorio, int min, int max, List<String> errores) {
-        texto(campo, valor, obligatorio, min, max, TEXTO_GENERAL, "contiene caracteres no permitidos", errores);
+        texto(campo, valor, obligatorio, min, max, TEXTO_GENERAL,
+                "solo admite letras, números, espacios y estos signos: . , # & ' / -", errores);
     }
 
     // ===================== Identificadores oficiales =====================
@@ -83,9 +85,11 @@ public final class Validaciones {
             return;
         }
         if (valor.length() != 18) {
-            errores.add(campo + ": debe contener 18 caracteres");
+            errores.add(campo + ": debe contener exactamente 18 caracteres");
         } else if (!CURP.matcher(valor).matches()) {
-            errores.add(campo + ": no tiene un formato de CURP válido (letras en mayúsculas)");
+            errores.add(campo + ": formato inválido; usa 4 letras, fecha AAMMDD, sexo H/M/X, "
+                    + "clave de entidad, 3 consonantes, un carácter de homoclave y dígito verificador, "
+                    + "todo en mayúsculas");
         }
     }
 
@@ -94,9 +98,10 @@ public final class Validaciones {
             return;
         }
         if (valor.length() != 12 && valor.length() != 13) {
-            errores.add(campo + ": debe contener 12 o 13 caracteres");
+            errores.add(campo + ": debe contener 12 caracteres (persona moral) o 13 (persona física)");
         } else if (!RFC.matcher(valor).matches()) {
-            errores.add(campo + ": no tiene un formato de RFC válido (letras en mayúsculas)");
+            errores.add(campo + ": formato inválido; debe iniciar con 3 o 4 letras, incluir fecha AAMMDD "
+                    + "y terminar con 3 caracteres alfanuméricos, todo en mayúsculas");
         }
     }
 
@@ -110,7 +115,8 @@ public final class Validaciones {
         if (limpio.length() > 100) {
             errores.add(campo + ": admite máximo 100 caracteres");
         } else if (!CORREO.matcher(limpio).matches()) {
-            errores.add(campo + ": no tiene un formato de correo electrónico válido");
+            errores.add(campo + ": formato inválido; usa el formato usuario@dominio.extensión "
+                    + "(por ejemplo, nombre@correo.com)");
         }
     }
 
@@ -150,20 +156,20 @@ public final class Validaciones {
             return;
         }
         if (valor.signum() <= 0) {
-            errores.add(campo + ": debe ser mayor a cero");
+            errores.add(campo + ": debe ser mayor que 0");
         }
         if (valor.stripTrailingZeros().scale() > 2) {
-            errores.add(campo + ": admite máximo 2 decimales");
+            errores.add(campo + ": admite máximo 2 decimales (por ejemplo, 15000.50)");
         }
         if (valor.precision() - valor.scale() > 10) {
-            errores.add(campo + ": admite máximo 10 dígitos enteros");
+            errores.add(campo + ": admite máximo 10 dígitos antes del punto decimal");
         }
     }
 
     // ============================= Fechas =============================
 
     /**
-     * Fecha simple en formato AAAA-MM-DD (también se acepta AAAA/MM/DD).
+     * Fecha simple en formato AAAA-MM-DD o AAAA/MM/DD.
      * Devuelve la fecha ya convertida, o null si faltó o es inválida.
      */
     public static LocalDate fecha(String campo, String valor, List<String> errores) {
@@ -173,7 +179,8 @@ public final class Validaciones {
         try {
             return leerFecha(valor);
         } catch (DateTimeParseException e) {
-            errores.add(campo + ": debe ser una fecha real con formato AAAA-MM-DD");
+            errores.add(campo + ": debe ser una fecha real con formato AAAA-MM-DD "
+                    + "(también se acepta AAAA/MM/DD)");
             return null;
         }
     }
@@ -214,7 +221,8 @@ public final class Validaciones {
             String opciones = Arrays.stream(tipo.getEnumConstants())
                     .map(opcion -> opcion.name() + " (" + opcion.getCodigo() + ")")
                     .collect(Collectors.joining(", "));
-            errores.add(campo + ": valor no permitido. Opciones: " + opciones);
+            errores.add(campo + ": valor no reconocido. Escribe una de estas opciones "
+                    + "(se acepta el nombre o su clave): " + opciones);
         }
         return encontrado.orElse(null);
     }
@@ -231,13 +239,14 @@ public final class Validaciones {
             errores.add(campo + ": debe tener entre 8 y 72 caracteres");
         }
         if (valor.chars().anyMatch(Character::isWhitespace)) {
-            errores.add(campo + ": no puede contener espacios");
+            errores.add(campo + ": no puede contener espacios ni otros caracteres en blanco");
         }
         boolean completa = valor.chars().anyMatch(Character::isUpperCase)
                 && valor.chars().anyMatch(Character::isLowerCase)
                 && valor.chars().anyMatch(Character::isDigit);
         if (!completa) {
-            errores.add(campo + ": debe incluir al menos una mayúscula, una minúscula y un dígito");
+            errores.add(campo + ": debe incluir al menos una letra mayúscula, una letra minúscula "
+                    + "y un dígito");
         }
     }
 
@@ -247,7 +256,7 @@ public final class Validaciones {
     public static void fechaCoincide(String campo, String identificador, int inicio, LocalDate nacimiento, List<String> errores) {
         String esperado = nacimiento.format(FECHA_CORTA);
         if (!identificador.substring(inicio, inicio + 6).equals(esperado)) {
-            errores.add(campo + ": la fecha que contiene no coincide con la fecha de nacimiento");
+            errores.add(campo + ": la fecha AAMMDD del identificador no coincide con fechaNacimiento");
         }
     }
 
@@ -255,9 +264,9 @@ public final class Validaciones {
 
     public static void idPositivo(String campo, Integer valor, List<String> errores) {
         if (valor == null) {
-            errores.add(campo + ": es obligatorio");
+            errores.add(campo + ": es obligatorio y debe ser un número entero");
         } else if (valor <= 0) {
-            errores.add(campo + ": debe ser un número entero positivo");
+            errores.add(campo + ": debe ser un número entero mayor que cero");
         }
     }
 
@@ -265,7 +274,7 @@ public final class Validaciones {
     private static boolean falta(String campo, String valor, boolean obligatorio, List<String> errores) {
         if (valor == null || valor.isBlank()) {
             if (obligatorio) {
-                errores.add(campo + ": es obligatorio");
+                errores.add(campo + ": es obligatorio y no puede estar vacío");
             }
             return true;
         }
@@ -279,8 +288,10 @@ public final class Validaciones {
         }
         String limpio = valor.trim();
         if (limpio.length() < min || limpio.length() > max) {
-            errores.add(campo + ": debe tener entre " + min + " y " + max + " caracteres");
-        } else if (!formato.matcher(limpio).matches()) {
+            errores.add(campo + ": debe tener entre " + min + " y " + max
+                    + " caracteres; se recibieron " + limpio.length());
+        }
+        if (!formato.matcher(limpio).matches()) {
             errores.add(campo + ": " + mensajeFormato);
         }
     }

@@ -10,6 +10,7 @@ import com.proyecto.servicios.model.onboarding.LoginRequest;
 import com.proyecto.servicios.model.onboarding.LoginResponse;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.service.Impl.LoginServiceImpl;
+import com.proyecto.servicios.security.TokenService;
 import com.proyecto.servicios.validation.ClienteValidador;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,13 +38,16 @@ class LoginServiceImplTest {
 
     @Mock
     private ClienteRepository clienteRepository;
+    @Mock
+    private TokenService tokenService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
     private LoginServiceImpl servicio;
 
     @BeforeEach
     void preparar() {
-        servicio = new LoginServiceImpl(clienteRepository, new ClienteMapper(), new ClienteValidador(), passwordEncoder);
+        servicio = new LoginServiceImpl(clienteRepository, new ClienteMapper(), new ClienteValidador(),
+                passwordEncoder, tokenService);
     }
 
     @Test

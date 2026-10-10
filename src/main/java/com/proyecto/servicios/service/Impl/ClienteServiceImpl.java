@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import com.proyecto.servicios.service.NacionalidadService;
+import com.proyecto.servicios.security.ControlAcceso;
 
 @Service
 @Slf4j
@@ -36,6 +37,7 @@ public class ClienteServiceImpl implements ClienteService {
     private final ClienteValidador validador;
     private final PasswordEncoder passwordEncoder;
     private final OnboardingProperties propiedades;
+    private final ControlAcceso controlAcceso;
 
     private final NacionalidadService nacionalidadService;
 
@@ -45,7 +47,9 @@ public class ClienteServiceImpl implements ClienteService {
                               ClienteValidador validador,
                               PasswordEncoder passwordEncoder,
                               OnboardingProperties propiedades,
-                              NacionalidadService nacionalidadService) {
+                              NacionalidadService nacionalidadService,
+                              ControlAcceso controlAcceso
+    ) {
         this.validador = validador;
         this.passwordEncoder = passwordEncoder;
         this.clienteRepository = clienteRepository;
@@ -53,6 +57,7 @@ public class ClienteServiceImpl implements ClienteService {
         this.clienteMapper = clienteMapper;
         this.propiedades = propiedades;
         this.nacionalidadService = nacionalidadService;
+        this.controlAcceso = controlAcceso;
     }
 
     // ============================ Alta ============================
@@ -87,6 +92,7 @@ public class ClienteServiceImpl implements ClienteService {
     @Transactional
     public ClienteResponse actualizar(Integer id, ClienteUpdateRequest request) {
         validador.validarActualizacion(id, request);
+        controlAcceso.verificarPropietario(id);
         String nacionalidad = nacionalidadService.obtenerNombreValido(request.getNacionalidad());
 
         Cliente cliente = obtener(clienteRepository.buscarPorId(id), "id " + id);
@@ -114,6 +120,7 @@ public class ClienteServiceImpl implements ClienteService {
     @Transactional
     public void darDeBaja(Integer id) {
         validador.validarId(id);
+        controlAcceso.verificarPropietario(id);
 
         Cliente cliente = obtener(clienteRepository.buscarPorId(id), "id " + id);
         if (!cliente.isActivo()) {
@@ -127,49 +134,62 @@ public class ClienteServiceImpl implements ClienteService {
 
     @Override
     public List<ClienteResponse> consultarTodos() {
-        return convertir(clienteRepository.buscarTodos());
+        return clienteAutenticado()
+                .map(clienteMapper::aRespuesta)
+                .map(List::of)
+                .orElseGet(List::of);
     }
 
     @Override
     public List<ClienteResponse> consultarActivos() {
-        return convertir(clienteRepository.buscarActivos());
+        return clienteAutenticado()
+                .filter(Cliente::isActivo)
+                .map(clienteMapper::aRespuesta)
+                .map(List::of)
+                .orElseGet(List::of);
     }
 
     @Override
     public List<ClienteResponse> consultarRegistradosEntre(String desde, String hasta) {
         LocalDate[] rango = validador.validarRango(desde, hasta);
-        return convertir(clienteRepository.buscarRegistradosEntre(rango[0], rango[1]));
+        return clienteAutenticado()
+                .filter(cliente -> !cliente.getFechaRegistro().isBefore(rango[0])
+                        && !cliente.getFechaRegistro().isAfter(rango[1]))
+                .map(clienteMapper::aRespuesta)
+                .map(List::of)
+                .orElseGet(List::of);
     }
 
     @Override
     public ClienteResponse consultarPorId(Integer id) {
         validador.validarId(id);
+        controlAcceso.verificarPropietario(id);
         return clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorId(id), "id " + id));
     }
 
     @Override
     public ClienteResponse consultarPorCurp(String curp) {
         validador.validarCurp(curp);
-        return clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorCurp(curp), "CURP " + curp));
+        return responderSiEsPropietario(obtener(clienteRepository.buscarPorCurp(curp), "CURP " + curp));
     }
 
     @Override
     public ClienteResponse consultarPorRfc(String rfc) {
         validador.validarRfc(rfc);
-        return clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorRfc(rfc), "RFC " + rfc));
+        return responderSiEsPropietario(obtener(clienteRepository.buscarPorRfc(rfc), "RFC " + rfc));
     }
 
     @Override
     public ClienteResponse consultarPorCorreo(String correo) {
         validador.validarCorreo(correo);
         String normalizado = clienteMapper.normalizarCorreo(correo);
-        return clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorCorreo(normalizado), "correo " + normalizado));
+        return responderSiEsPropietario(obtener(clienteRepository.buscarPorCorreo(normalizado), "correo " + normalizado));
     }
 
     @Override
     public ClienteResponse consultarPorNumeroCuenta(String numeroCuenta) {
         validador.validarNumeroCuenta(numeroCuenta);
-        return clienteMapper.aRespuesta(
+        return responderSiEsPropietario(
                 obtener(clienteRepository.buscarPorNumeroCuenta(numeroCuenta), "número de cuenta " + numeroCuenta));
     }
 
@@ -195,7 +215,12 @@ public class ClienteServiceImpl implements ClienteService {
         return resultado.orElseThrow(() -> new ClienteNoEncontradoException(criterio));
     }
 
-    private List<ClienteResponse> convertir(List<Cliente> clientes) {
-        return clientes.stream().map(clienteMapper::aRespuesta).toList();
+    private Optional<Cliente> clienteAutenticado() {
+        return clienteRepository.buscarPorId(controlAcceso.obtenerClienteAutenticado());
+    }
+
+    private ClienteResponse responderSiEsPropietario(Cliente cliente) {
+        controlAcceso.verificarPropietario(cliente.getId());
+        return clienteMapper.aRespuesta(cliente);
     }
 }

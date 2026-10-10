@@ -1,6 +1,9 @@
 package com.proyecto.servicios.exception;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.proyecto.servicios.model.onboarding.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -39,23 +42,82 @@ public class GlobalExceptionHandler {
                 return manejarNegocio(negocio);
             }
             if (causa instanceof JsonMappingException mapeo && !mapeo.getPath().isEmpty()) {
-                String campo = mapeo.getPath().get(mapeo.getPath().size() - 1).getFieldName();
+                String campo = obtenerRutaCampo(mapeo);
+                String detalle;
+                if (mapeo instanceof UnrecognizedPropertyException) {
+                    detalle = campo + ": campo no permitido; verifica el nombre y consulta los campos admitidos";
+                } else if (mapeo instanceof InvalidFormatException formato) {
+                    detalle = campo + ": " + descripcionTipo(formato.getTargetType());
+                } else {
+                    detalle = campo + ": revisa el valor y el tipo de dato esperado";
+                }
                 return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
-                        "La información enviada no es válida",
-                        List.of(campo + ": el valor no corresponde al tipo de dato esperado"));
+                        "No se pudo interpretar la información enviada; corrige los campos indicados",
+                        List.of(detalle));
+            }
+            if (causa instanceof JsonParseException) {
+                return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
+                        "El cuerpo contiene JSON mal formado; revisa comas, comillas, llaves y corchetes",
+                        List.of("Corrige la sintaxis del JSON y vuelve a enviar la petición"));
             }
             causa = causa.getCause();
         }
         return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
-                "El cuerpo de la petición es obligatorio y debe ser un JSON bien formado", List.of());
+                "El cuerpo de la petición es obligatorio y debe ser un JSON válido. "
+                        + "Revisa comas, comillas, llaves y tipos de dato",
+                List.of("Envía un objeto JSON completo con Content-Type: application/json"));
     }
 
     /** Un parámetro de la URL con el tipo equivocado, por ejemplo /clientes/abc. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> manejarTipoIncorrecto(MethodArgumentTypeMismatchException ex) {
+        String detalle;
+        if ("id".equals(ex.getName())) {
+            detalle = "id: debe ser un número entero mayor que cero, sin letras ni decimales";
+        } else {
+            detalle = ex.getRequiredType() == null
+                    ? ex.getName() + ": el valor no tiene el formato esperado"
+                    : ex.getName() + ": debe ser " + descripcionTipo(ex.getRequiredType());
+        }
         return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
-                "Los parámetros enviados no son válidos",
-                List.of(ex.getName() + ": debe ser un número entero positivo"));
+                "Un parámetro de la URL no tiene el formato esperado",
+                List.of(detalle));
+    }
+
+    private String obtenerRutaCampo(JsonMappingException excepcion) {
+        StringBuilder ruta = new StringBuilder();
+        for (JsonMappingException.Reference referencia : excepcion.getPath()) {
+            if (referencia.getFieldName() != null) {
+                if (!ruta.isEmpty()) {
+                    ruta.append('.');
+                }
+                ruta.append(referencia.getFieldName());
+            } else if (referencia.getIndex() >= 0) {
+                ruta.append('[').append(referencia.getIndex()).append(']');
+            }
+        }
+        return ruta.isEmpty() ? "cuerpo" : ruta.toString();
+    }
+
+    private String descripcionTipo(Class<?> tipo) {
+        if (tipo == null) {
+            return "un valor con el formato correcto";
+        }
+        if (Integer.class.equals(tipo) || int.class.equals(tipo)
+                || Long.class.equals(tipo) || long.class.equals(tipo)) {
+            return "un número entero, sin letras ni decimales";
+        }
+        if (java.math.BigDecimal.class.equals(tipo) || Double.class.equals(tipo)
+                || double.class.equals(tipo) || Float.class.equals(tipo) || float.class.equals(tipo)) {
+            return "un número; usa punto para separar los decimales";
+        }
+        if (Boolean.class.equals(tipo) || boolean.class.equals(tipo)) {
+            return "un valor booleano: true o false";
+        }
+        if (java.time.LocalDate.class.equals(tipo)) {
+            return "una fecha real con formato AAAA-MM-DD";
+        }
+        return "un valor compatible con el tipo " + tipo.getSimpleName();
     }
 
     /**

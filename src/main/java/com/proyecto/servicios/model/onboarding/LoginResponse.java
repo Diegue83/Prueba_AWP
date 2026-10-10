@@ -14,4 +14,7 @@ public class LoginResponse {
     private String correo;
     private String numeroCuenta;
     private LocalDate ultimoAcceso;
+    private String token;
+    private String tipoToken;
+    private Long expiraEnMinutos;
 }

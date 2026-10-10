@@ -29,6 +29,7 @@ public class ClienteValidador {
     // ====================== POST /clientes ======================
 
     public void validarAlta(ClienteRequest solicitud) {
+        validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
         int erroresPrevios;
 
@@ -55,6 +56,7 @@ public class ClienteValidador {
     // ==================== PUT /clientes/{id} ====================
 
     public void validarActualizacion(Integer id, ClienteUpdateRequest solicitud) {
+        validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
         Validaciones.idPositivo("id", id, errores);
         validarDatosModificables(solicitud, errores);
@@ -64,10 +66,11 @@ public class ClienteValidador {
     // ======================== POST /login ========================
 
     public void validarLogin(LoginRequest solicitud) {
+        validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
         Validaciones.correo("correo", solicitud.getCorreo(), errores);
         if (solicitud.getContrasena() == null || solicitud.getContrasena().isEmpty()) {
-            errores.add("contrasena: es obligatoria");
+            errores.add("contrasena: es obligatoria y no puede estar vacía");
         }
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
@@ -110,7 +113,7 @@ public class ClienteValidador {
         LocalDate fechaDesde = Validaciones.fecha("desde", desde, errores);
         LocalDate fechaHasta = Validaciones.fecha("hasta", hasta, errores);
         if (fechaDesde != null && fechaHasta != null && fechaDesde.isAfter(fechaHasta)) {
-            errores.add("desde: no puede ser posterior a 'hasta'");
+            errores.add("desde: debe ser igual o anterior a 'hasta'; revisa el orden de las fechas");
         }
         lanzarSiHayErrores(MENSAJE_PARAMETROS, errores);
         return new LocalDate[]{fechaDesde, fechaHasta};
@@ -135,7 +138,7 @@ public class ClienteValidador {
         Validaciones.telefono("telefonoMovil", datos.getTelefonoMovil(), true, errores);
         Validaciones.telefono("telefonoAlterno", datos.getTelefonoAlterno(), false, errores);
         if (datos.getTelefonoAlterno() != null && datos.getTelefonoAlterno().equals(datos.getTelefonoMovil())) {
-            errores.add("telefonoAlterno: debe ser distinto del teléfono móvil");
+            errores.add("telefonoAlterno: debe ser distinto de telefonoMovil");
         }
 
         // Domicilio
@@ -150,7 +153,8 @@ public class ClienteValidador {
 
     private void validarDomicilio(DomicilioRequest domicilio, List<String> errores) {
         if (domicilio == null) {
-            errores.add("domicilio: es obligatorio");
+            errores.add("domicilio: es obligatorio; incluye un objeto con calle, número exterior, colonia, "
+                    + "municipio, estado, código postal y país");
             return;
         }
         Validaciones.textoGeneral("domicilio.calle", domicilio.getCalle(), true, 2, 100, errores);
@@ -172,13 +176,20 @@ public class ClienteValidador {
 
         Sexo sexo = Catalogo.leer(Sexo.class, solicitud.getSexo());
         if (curp.charAt(10) != sexo.getCodigo().charAt(0)) {
-            errores.add("curp: el sexo que contiene (" + curp.charAt(10) + ") no coincide con el sexo capturado");
+            errores.add("curp: el sexo indicado en la posición 11 no coincide con el campo sexo");
         }
     }
 
     private void lanzarSiHayErrores(String mensaje, List<String> errores) {
         if (!errores.isEmpty()) {
             throw new ValidacionException(mensaje, errores);
+        }
+    }
+
+    private void validarCuerpoPresente(Object solicitud) {
+        if (solicitud == null) {
+            throw new ValidacionException(MENSAJE_CUERPO,
+                    List.of("cuerpo: no puede ser null; envía un objeto JSON con los datos requeridos"));
         }
     }
 }
