@@ -11,7 +11,7 @@ import java.time.LocalDate;
 @Getter
 @Setter
 public class ClienteResponse {
-    private Integer id;
+
     private String nombre;
     private String segundoNombre;
     private String apellidoPaterno;
