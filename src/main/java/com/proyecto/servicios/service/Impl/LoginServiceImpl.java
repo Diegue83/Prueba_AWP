@@ -6,15 +6,16 @@ import com.proyecto.servicios.exception.ClienteInactivoException;
 import com.proyecto.servicios.exception.ContrasenaIncorrectaException;
 import com.proyecto.servicios.exception.CorreoNoEncontradoException;
 import com.proyecto.servicios.mapper.ClienteMapper;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.LoginRequest;
 import com.proyecto.servicios.model.onboarding.LoginResponse;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
+import com.proyecto.servicios.repositorys.onboarding.LoginRepository;
 import com.proyecto.servicios.service.LoginService;
 import com.proyecto.servicios.validation.ClienteValidador;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -25,6 +26,7 @@ import com.proyecto.servicios.security.TokenService;
 public class LoginServiceImpl implements LoginService {
 
     private final ClienteRepository clienteRepository;
+    private final LoginRepository loginRepository;
     private final ClienteMapper clienteMapper;
     private final ClienteValidador validador;
     private final PasswordEncoder passwordEncoder;
@@ -32,12 +34,14 @@ public class LoginServiceImpl implements LoginService {
 
 
     public LoginServiceImpl(ClienteRepository clienteRepository,
+                            LoginRepository loginRepository,
                             ClienteMapper clienteMapper,
                             ClienteValidador validador,
                             PasswordEncoder passwordEncoder,
                             TokenService tokenService
     ) {
         this.clienteRepository = clienteRepository;
+        this.loginRepository = loginRepository;
         this.clienteMapper = clienteMapper;
         this.validador = validador;
         this.passwordEncoder = passwordEncoder;
@@ -52,8 +56,7 @@ public class LoginServiceImpl implements LoginService {
      *   4. La contraseña no coincide    -> 401 CONTRASENA_INCORRECTA
      */
     @Override
-    @Transactional
-    public LoginResponse iniciarSesion(LoginRequest request) {
+    public GenericResponse iniciarSesion(LoginRequest request) {
         validador.validarLogin(request);
 
         String correo = clienteMapper.normalizarCorreo(request.getCorreo());
@@ -73,8 +76,14 @@ public class LoginServiceImpl implements LoginService {
         }
 
         acceso.registrarAcceso();
+        loginRepository.save(acceso);
         log.info("Inicio de sesión correcto del cliente id={}", cliente.getId());
-        return construirRespuesta(cliente);
+        LoginResponse datos = construirRespuesta(cliente);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Inicio de sesión correcto");
+        respuesta.setDatos(datos);
+        return respuesta;
     }
 
     private LoginResponse construirRespuesta(Cliente cliente) {

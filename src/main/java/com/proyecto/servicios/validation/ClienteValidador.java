@@ -6,7 +6,6 @@ import com.proyecto.servicios.enums.Sexo;
 import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.model.onboarding.ClienteDatos;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
-import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
 import com.proyecto.servicios.model.onboarding.DomicilioRequest;
 import com.proyecto.servicios.model.onboarding.LoginRequest;
 import org.springframework.stereotype.Component;
@@ -14,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Valida lo que llega a cada endpoint usando las funciones de {@link Validaciones}.
@@ -31,6 +31,11 @@ public class ClienteValidador {
     public void validarAlta(ClienteRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
+        rechazarSiIncluido("id", solicitud.getId(), errores);
+        rechazarSiIncluido("numeroCuenta", solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
+        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
         int erroresPrevios;
 
         Validaciones.curp("curp", solicitud.getCurp(), errores);
@@ -55,11 +60,64 @@ public class ClienteValidador {
 
     // ==================== PUT /clientes/{id} ====================
 
-    public void validarActualizacion(Integer id, ClienteUpdateRequest solicitud) {
+    public void validarActualizacion(ClienteRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
-        Validaciones.idPositivo("id", id, errores);
+        Validaciones.idPositivo("id", solicitud.getId(), errores);
+        if (solicitud.getCurp() != null) {
+            errores.add("curp: no se puede modificar");
+        }
+        if (solicitud.getRfc() != null) {
+            errores.add("rfc: no se puede modificar");
+        }
+        if (solicitud.getContrasena() != null) {
+            errores.add("contrasena: no se puede modificar");
+        }
+        if (solicitud.getNumeroCuenta() != null) {
+            errores.add("numeroCuenta: no se puede modificar");
+        }
+        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
+        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
         validarDatosModificables(solicitud, errores);
+        lanzarSiHayErrores(MENSAJE_CUERPO, errores);
+    }
+
+    public void validarBaja(ClienteRequest solicitud) {
+        validarCuerpoPresente(solicitud);
+        List<String> errores = new ArrayList<>();
+        Validaciones.idPositivo("id", solicitud.getId(), errores);
+        rechazarDatosModificables(solicitud, errores, true);
+        rechazarSiIncluido("curp", solicitud.getCurp(), errores);
+        rechazarSiIncluido("rfc", solicitud.getRfc(), errores);
+        rechazarSiIncluido("contrasena", solicitud.getContrasena(), errores);
+        rechazarSiIncluido("numeroCuenta", solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
+        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
+        lanzarSiHayErrores(MENSAJE_CUERPO, errores);
+    }
+
+    public void validarConsulta(ClienteRequest solicitud) {
+        validarCuerpoPresente(solicitud);
+        List<String> errores = new ArrayList<>();
+        rechazarDatosModificables(solicitud, errores, false);
+        rechazarSiIncluido("contrasena", solicitud.getContrasena(), errores);
+        if (solicitud.getId() != null) {
+            Validaciones.idPositivo("id", solicitud.getId(), errores);
+        }
+        if (solicitud.getCurp() != null) {
+            Validaciones.curp("curp", solicitud.getCurp().toUpperCase(Locale.ROOT), errores);
+        }
+        if (solicitud.getRfc() != null) {
+            Validaciones.rfc("rfc", solicitud.getRfc().toUpperCase(Locale.ROOT), errores);
+        }
+        if (solicitud.getCorreo() != null) {
+            Validaciones.correo("correo", solicitud.getCorreo(), errores);
+        }
+        if (solicitud.getNumeroCuenta() != null) {
+            Validaciones.numeroCuenta("numeroCuenta", solicitud.getNumeroCuenta(), errores);
+        }
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
 
@@ -157,6 +215,7 @@ public class ClienteValidador {
                     + "municipio, estado, código postal y país");
             return;
         }
+
         Validaciones.textoGeneral("domicilio.calle", domicilio.getCalle(), true, 2, 100, errores);
         Validaciones.textoGeneral("domicilio.numeroExterior", domicilio.getNumeroExterior(), true, 1, 10, errores);
         Validaciones.textoGeneral("domicilio.numeroInterior", domicilio.getNumeroInterior(), false, 1, 10, errores);
@@ -165,6 +224,33 @@ public class ClienteValidador {
         Validaciones.soloLetras("domicilio.estado", domicilio.getEstado(), true, 2, 50, errores);
         Validaciones.codigoPostal("domicilio.codigoPostal", domicilio.getCodigoPostal(), errores);
         Validaciones.soloLetras("domicilio.pais", domicilio.getPais(), true, 2, 50, errores);
+    }
+
+    private void rechazarDatosModificables(ClienteRequest solicitud, List<String> errores,
+                                           boolean rechazarCorreo) {
+        rechazarSiIncluido("nombre", solicitud.getNombre(), errores);
+        rechazarSiIncluido("segundoNombre", solicitud.getSegundoNombre(), errores);
+        rechazarSiIncluido("apellidoPaterno", solicitud.getApellidoPaterno(), errores);
+        rechazarSiIncluido("apellidoMaterno", solicitud.getApellidoMaterno(), errores);
+        rechazarSiIncluido("fechaNacimiento", solicitud.getFechaNacimiento(), errores);
+        rechazarSiIncluido("sexo", solicitud.getSexo(), errores);
+        rechazarSiIncluido("nacionalidad", solicitud.getNacionalidad(), errores);
+        rechazarSiIncluido("estadoCivil", solicitud.getEstadoCivil(), errores);
+        if (rechazarCorreo) {
+            rechazarSiIncluido("correo", solicitud.getCorreo(), errores);
+        }
+        rechazarSiIncluido("telefonoMovil", solicitud.getTelefonoMovil(), errores);
+        rechazarSiIncluido("telefonoAlterno", solicitud.getTelefonoAlterno(), errores);
+        rechazarSiIncluido("domicilio", solicitud.getDomicilio(), errores);
+        rechazarSiIncluido("ocupacion", solicitud.getOcupacion(), errores);
+        rechazarSiIncluido("empresa", solicitud.getEmpresa(), errores);
+        rechazarSiIncluido("ingresoMensual", solicitud.getIngresoMensual(), errores);
+    }
+
+    private void rechazarSiIncluido(String campo, Object valor, List<String> errores) {
+        if (valor != null) {
+            errores.add(campo + ": no se admite en esta operación");
+        }
     }
 
     /** La CURP y el RFC contienen la fecha de nacimiento, y la CURP además el sexo: deben coincidir con lo capturado. */

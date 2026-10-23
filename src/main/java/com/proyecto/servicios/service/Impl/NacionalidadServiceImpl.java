@@ -3,17 +3,16 @@ package com.proyecto.servicios.service.Impl;
 import com.proyecto.servicios.entity.onboarding.Nacionalidad;
 import com.proyecto.servicios.exception.NacionalidadNoEncontradaException;
 import com.proyecto.servicios.exception.ValidacionException;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.NacionalidadResponse;
+import com.proyecto.servicios.model.onboarding.NacionalidadRequest;
 import com.proyecto.servicios.repositorys.onboarding.NacionalidadRepository;
 import com.proyecto.servicios.service.NacionalidadService;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.Optional;
 
 @Service
-@Transactional(readOnly = true)
 public class NacionalidadServiceImpl implements NacionalidadService {
 
     private final NacionalidadRepository nacionalidadRepository;
@@ -23,17 +22,28 @@ public class NacionalidadServiceImpl implements NacionalidadService {
     }
 
     @Override
-    public List<NacionalidadResponse> consultarTodas() {
-        return nacionalidadRepository.buscarTodas().stream()
+    public GenericResponse consultarTodas() {
+        List<NacionalidadResponse> nacionalidades = nacionalidadRepository.buscarTodas().stream()
                 .map(this::aRespuesta)
                 .toList();
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Consulta de nacionalidades realizada correctamente");
+        respuesta.setDatos(nacionalidades);
+        return respuesta;
     }
 
     @Override
-    public NacionalidadResponse consultar(String valor) {
-        return buscar(valor)
+    public GenericResponse consultar(NacionalidadRequest request) {
+        String valor = request.getValor();
+        NacionalidadResponse nacionalidad = buscar(valor)
                 .map(this::aRespuesta)
                 .orElseThrow(() -> new NacionalidadNoEncontradaException(valor));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Nacionalidad encontrada");
+        respuesta.setDatos(nacionalidad);
+        return respuesta;
     }
 
     @Override

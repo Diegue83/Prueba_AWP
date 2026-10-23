@@ -61,6 +61,7 @@ public class ClienteMapper {
     public ClienteResponse aRespuesta(Cliente cliente) {
         ClienteResponse respuesta = new ClienteResponse();
 
+        respuesta.setId(cliente.getId());
         respuesta.setNombre(cliente.getNombre());
         respuesta.setSegundoNombre(cliente.getSegundoNombre());
         respuesta.setApellidoPaterno(cliente.getApellidoPaterno());

@@ -1,32 +1,36 @@
 package com.proyecto.servicios.service;
 
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
-import com.proyecto.servicios.model.onboarding.ClienteResponse;
-import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
+import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 
 import java.util.List;
 
 public interface ClienteService {
 
-    ClienteResponse registrar(ClienteRequest request);
+    GenericResponse registrar(ClienteRequest request);
 
-    ClienteResponse actualizar(Integer id, ClienteUpdateRequest request);
+    GenericResponse actualizar(ClienteRequest request);
 
-    void darDeBaja(Integer id);
+    GenericResponse darDeBaja(ClienteRequest request);
 
-    List<ClienteResponse> consultarTodos();
+    GenericResponse consultarTodos();
 
-    List<ClienteResponse> consultarActivos();
+    GenericResponse consultar(ClienteRequest criterios);
 
-    List<ClienteResponse> consultarRegistradosEntre(String desde, String hasta);
+    GenericResponse consultar(ConsultaClienteRequest criterios);
 
-    ClienteResponse consultarPorId(Integer id);
+    GenericResponse consultarActivos();
 
-    ClienteResponse consultarPorCurp(String curp);
+    GenericResponse consultarRegistradosEntre(String desde, String hasta);
 
-    ClienteResponse consultarPorRfc(String rfc);
+    GenericResponse consultarPorId(Integer id);
 
-    ClienteResponse consultarPorCorreo(String correo);
+    GenericResponse consultarPorCurp(String curp);
 
-    ClienteResponse consultarPorNumeroCuenta(String numeroCuenta);
+    GenericResponse consultarPorRfc(String rfc);
+
+    GenericResponse consultarPorCorreo(String correo);
+
+    GenericResponse consultarPorNumeroCuenta(String numeroCuenta);
 }

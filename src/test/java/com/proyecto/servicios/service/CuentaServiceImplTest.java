@@ -3,8 +3,11 @@ package com.proyecto.servicios.service;
 import com.proyecto.servicios.entity.onboarding.Cliente;
 import com.proyecto.servicios.entity.onboarding.Cuenta;
 import com.proyecto.servicios.exception.AccesoDenegadoException;
+import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.enums.EstatusCuenta;
 import com.proyecto.servicios.mapper.ClienteMapper;
+import com.proyecto.servicios.model.onboarding.CuentaRequest;
+import com.proyecto.servicios.model.onboarding.ConsultaCuentaRequest;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.security.ControlAcceso;
 import com.proyecto.servicios.service.Impl.CuentaServiceImpl;
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,7 +56,9 @@ class CuentaServiceImplTest {
         when(cuentaRepository.buscarPorNumero(NUMERO_CUENTA)).thenReturn(Optional.of(cuenta));
         doThrow(new AccesoDenegadoException()).when(controlAcceso).verificarPropietario(2);
 
-        assertThatThrownBy(() -> servicio.consultarPorNumero(NUMERO_CUENTA))
+        CuentaRequest request = new CuentaRequest();
+        request.setNumeroCuenta(NUMERO_CUENTA);
+        assertThatThrownBy(() -> servicio.consultarPorNumero(request))
                 .isInstanceOf(AccesoDenegadoException.class);
 
         verify(controlAcceso).verificarPropietario(2);
@@ -64,6 +70,35 @@ class CuentaServiceImplTest {
         when(cuentaRepository.buscarPorEstatusYCliente(EstatusCuenta.ACTIVA, 1))
                 .thenReturn(List.of());
 
-        assertThat(servicio.consultarActivas()).isEmpty();
+        assertThat((List<?>) servicio.consultarActivas().getDatos()).isEmpty();
+    }
+
+    @Test
+    void consultaCombinaFiltrosYLimitaResultadosAlTitularAutenticado() {
+        LocalDate desde = LocalDate.parse("2025-01-01");
+        LocalDate hasta = LocalDate.parse("2025-12-31");
+        when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
+        when(cuentaRepository.buscarPorCriterios(1, NUMERO_CUENTA, EstatusCuenta.ACTIVA, desde, hasta))
+                .thenReturn(List.of());
+
+        ConsultaCuentaRequest request = new ConsultaCuentaRequest();
+        request.setNumeroCuenta(NUMERO_CUENTA);
+        request.setEstatus(EstatusCuenta.ACTIVA);
+        request.setFechaAperturaDesde(desde);
+        request.setFechaAperturaHasta(hasta);
+
+        assertThat((List<?>) servicio.consultar(request).getDatos()).isEmpty();
+        verify(cuentaRepository).buscarPorCriterios(1, NUMERO_CUENTA, EstatusCuenta.ACTIVA, desde, hasta);
+    }
+
+    @Test
+    void consultaRechazaRangoDeAperturaInvertido() {
+        ConsultaCuentaRequest request = new ConsultaCuentaRequest();
+        request.setFechaAperturaDesde(LocalDate.parse("2025-12-31"));
+        request.setFechaAperturaHasta(LocalDate.parse("2025-01-01"));
+
+        assertThatThrownBy(() -> servicio.consultar(request))
+                .isInstanceOf(ValidacionException.class)
+                .hasMessageContaining("rango de fechas");
     }
 }

@@ -1,0 +1,315 @@
+@baseUrl = http://localhost:8080
+@correoPrueba = zayda.rest@example.com
+@contrasenaPrueba = Segura123
+@curpPrueba = VAVZ950312MGTRRY07
+@rfcPrueba = VAVZ950312AB1
+@personaPrueba = Prueba-{{$guid}}
+
+### 1. Crear cliente (público; usar un CURP/RFC/correo no registrados)
+# @name crearCliente
+POST {{baseUrl}}/clientes
+Content-Type: application/json
+
+{
+  "nombre": "Zayda",
+  "apellidoPaterno": "Vargas",
+  "apellidoMaterno": "Vargas",
+  "fechaNacimiento": "1995-03-12",
+  "curp": "{{curpPrueba}}",
+  "rfc": "{{rfcPrueba}}",
+  "sexo": "M",
+  "nacionalidad": "Mexicana",
+  "estadoCivil": "S",
+  "correo": "{{correoPrueba}}",
+  "telefonoMovil": "4181234567",
+  "domicilio": {
+    "calle": "Av. Hidalgo",
+    "numeroExterior": "12",
+    "colonia": "Centro",
+    "municipio": "Dolores Hidalgo",
+    "estado": "Guanajuato",
+    "codigoPostal": "37800",
+    "pais": "Mexico"
+  },
+  "ocupacion": "Ingeniera",
+  "empresa": "Empresa REST",
+  "ingresoMensual": 15000.50,
+  "contrasena": "{{contrasenaPrueba}}"
+}
+
+> {% client.test("POST /clientes crea un cliente", function() { client.assert(response.status === 201, "Esperado HTTP 201"); }); %}
+
+### 2. Iniciar sesión para obtener el token de las rutas protegidas
+# @name iniciarSesion
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "correo": "{{correoPrueba}}",
+  "contrasena": "{{contrasenaPrueba}}"
+}
+
+> {% client.test("POST /login autentica el cliente", function() { client.assert(response.status === 200, "Esperado HTTP 200"); client.assert(!!response.body.datos.token, "La respuesta debe incluir el token"); }); %}
+
+### 3. Consultar clientes combinando criterios opcionales
+# @name consultarClientes
+POST {{baseUrl}}/clientes/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "correo": "{{correoPrueba}}",
+  "activo": true
+}
+
+> {% client.test("POST /clientes/consulta encuentra los criterios", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 4. Actualizar datos modificables del cliente autenticado
+PUT {{baseUrl}}/clientes
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "id": {{iniciarSesion.response.body.datos.clienteId}},
+  "nombre": "Zayda",
+  "apellidoPaterno": "Vargas",
+  "apellidoMaterno": "Vargas",
+  "fechaNacimiento": "1995-03-12",
+  "sexo": "M",
+  "nacionalidad": "Mexicana",
+  "estadoCivil": "S",
+  "correo": "{{correoPrueba}}",
+  "telefonoMovil": "4181234567",
+  "domicilio": {
+    "calle": "Av. Hidalgo",
+    "numeroExterior": "12",
+    "colonia": "Centro",
+    "municipio": "Dolores Hidalgo",
+    "estado": "Guanajuato",
+    "codigoPostal": "37800",
+    "pais": "Mexico"
+  },
+  "ocupacion": "Ingeniera",
+  "empresa": "Empresa REST",
+  "ingresoMensual": 15500.00
+}
+
+> {% client.test("PUT /clientes actualiza el cliente", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 5. Consultar las cuentas activas del titular autenticado
+GET {{baseUrl}}/cuentas/activas
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+
+> {% client.test("GET /cuentas/activas responde correctamente", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 6. Consultar cuentas combinando filtros
+POST {{baseUrl}}/cuentas/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "numeroCuenta": "{{iniciarSesion.response.body.datos.numeroCuenta}}",
+  "estatus": "ACTIVA",
+  "fechaAperturaDesde": "2020-01-01",
+  "fechaAperturaHasta": "2030-12-31"
+}
+
+> {% client.test("POST /cuentas/consulta combina criterios", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 7. Consultar saldo de la cuenta del titular autenticado
+POST {{baseUrl}}/cuentas/saldo
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "numeroCuenta": "{{iniciarSesion.response.body.datos.numeroCuenta}}"
+}
+
+> {% client.test("POST /cuentas/saldo consulta el saldo", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 8. Listar nacionalidades
+GET {{baseUrl}}/nacionalidades
+
+> {% client.test("GET /nacionalidades lista el catálogo", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 9. Consultar una nacionalidad del catálogo
+POST {{baseUrl}}/nacionalidades/consulta
+Content-Type: application/json
+
+{
+  "valor": "Mexicana"
+}
+
+> {% client.test("POST /nacionalidades/consulta encuentra la nacionalidad", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 10. Crear persona del servicio legado
+# @name crearPersona
+POST {{baseUrl}}/personas
+Content-Type: application/json
+
+{
+  "nombre": "{{personaPrueba}}",
+  "apellidoP": "REST",
+  "apellidoMaterno": "Pruebas"
+}
+
+> {% client.test("POST /personas crea una persona", function() { client.assert(response.status === 201, "Esperado HTTP 201"); }); %}
+
+### 11. Actualizar persona del servicio legado
+PUT {{baseUrl}}/personasActualiza
+Content-Type: application/json
+
+{
+  "nombre": "{{crearPersona.response.body.datos.nombre}}",
+  "apellidoP": "REST Actualizado",
+  "apellidoMaterno": "Pruebas"
+}
+
+> {% client.test("PUT /personasActualiza actualiza una persona", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 12. Eliminar persona del servicio legado (eliminación física)
+PUT {{baseUrl}}/personasElimina
+Content-Type: application/json
+
+{
+  "nombre": "{{crearPersona.response.body.datos.nombre}}"
+}
+
+> {% client.test("PUT /personasElimina elimina la persona de prueba", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### 13. Dar de baja lógicamente al cliente de prueba (ejecutar al final)
+DELETE {{baseUrl}}/clientes
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "id": {{iniciarSesion.response.body.datos.clienteId}}
+}
+
+> {% client.test("DELETE /clientes da de baja al cliente", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
+
+### Validación negativa de ejemplo: debe responder 400 y errores agrupados por campo
+POST {{baseUrl}}/clientes
+Content-Type: application/json
+
+{
+  "nombre": "",
+  "correo": "correo-invalido",
+  "telefonoMovil": "123"
+}
+
+> {% client.test("La validación de DTO responde HTTP 400", function() { client.assert(response.status === 400, "Esperado HTTP 400"); client.assert(!!response.body.datos.nombre, "datos debe agrupar los errores por campo"); }); %}
+
+### Negativo: correo de login con formato incorrecto
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "correo": "esto-no-es-un-correo",
+  "contrasena": "Segura123"
+}
+
+> {% client.test("Login rechaza correo inválido", function() { client.assert(response.status === 400, "Esperado HTTP 400"); client.assert(!!response.body.datos.correo, "Debe señalar el campo correo"); }); %}
+
+### Negativo: login sin contraseña
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "correo": "{{correoPrueba}}"
+}
+
+> {% client.test("Login requiere contraseña", function() { client.assert(response.status === 400, "Esperado HTTP 400"); client.assert(!!response.body.datos.contrasena, "Debe señalar el campo contrasena"); }); %}
+
+### Negativo: id inválido en criterios de clientes
+POST {{baseUrl}}/clientes/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "id": -10
+}
+
+> {% client.test("Consulta de clientes rechaza id negativo", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: campo no admitido entre los criterios de cliente
+POST {{baseUrl}}/clientes/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "nombre": "No es un filtro de consulta"
+}
+
+> {% client.test("Consulta de clientes rechaza campos no admitidos", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: número de cuenta con formato incorrecto
+POST {{baseUrl}}/cuentas/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "numeroCuenta": "123"
+}
+
+> {% client.test("Consulta de cuentas rechaza número corto", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: estatus de cuenta inexistente
+POST {{baseUrl}}/cuentas/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "estatus": "SUSPENDIDA"
+}
+
+> {% client.test("Consulta de cuentas rechaza estatus desconocido", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: fecha de apertura imposible
+POST {{baseUrl}}/cuentas/consulta
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "fechaAperturaDesde": "2025-02-30"
+}
+
+> {% client.test("Consulta de cuentas rechaza fecha imposible", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: número de cuenta obligatorio para consultar saldo
+POST {{baseUrl}}/cuentas/saldo
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{}
+
+> {% client.test("Consulta de saldo requiere número de cuenta", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: nacionalidad vacía
+POST {{baseUrl}}/nacionalidades/consulta
+Content-Type: application/json
+
+{
+  "valor": " "
+}
+
+> {% client.test("Consulta de nacionalidad rechaza valor vacío", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}
+
+### Negativo: endpoint protegido sin token
+GET {{baseUrl}}/cuentas/activas
+
+> {% client.test("Cuentas activas requiere autenticación", function() { client.assert(response.status === 401, "Esperado HTTP 401"); }); %}
+
+### Negativo: endpoint protegido con token inválido
+GET {{baseUrl}}/cuentas/activas
+Authorization: Bearer token-invalido
+
+> {% client.test("Cuentas activas rechaza token inválido", function() { client.assert(response.status === 401, "Esperado HTTP 401"); }); %}
+
+### Negativo: JSON malformado
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{"correo":
+
+> {% client.test("La API rechaza JSON malformado", function() { client.assert(response.status === 400, "Esperado HTTP 400"); }); %}

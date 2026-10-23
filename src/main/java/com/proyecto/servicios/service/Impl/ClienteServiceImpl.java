@@ -7,10 +7,12 @@ import com.proyecto.servicios.exception.ClienteNoEncontradoException;
 import com.proyecto.servicios.exception.ClienteYaRegistradoException;
 import com.proyecto.servicios.exception.CurpDuplicadaException;
 import com.proyecto.servicios.exception.RfcDuplicadoException;
+import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.mapper.ClienteMapper;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
 import com.proyecto.servicios.model.onboarding.ClienteResponse;
-import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
+import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.service.ClienteService;
@@ -18,17 +20,16 @@ import com.proyecto.servicios.validation.ClienteValidador;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import com.proyecto.servicios.service.NacionalidadService;
 import com.proyecto.servicios.security.ControlAcceso;
 
 @Service
 @Slf4j
-@Transactional(readOnly = true)
 public class ClienteServiceImpl implements ClienteService {
 
     private final ClienteRepository clienteRepository;
@@ -62,13 +63,8 @@ public class ClienteServiceImpl implements ClienteService {
 
     // ============================ Alta ============================
 
-    /**
-     * Registra al cliente y le abre su cuenta en una sola transacción:
-     * o se guardan cliente, domicilio, cuenta y login, o no se guarda nada.
-     */
     @Override
-    @Transactional
-    public ClienteResponse registrar(ClienteRequest request) {
+    public GenericResponse registrar(ClienteRequest request) {
         validador.validarAlta(request);     // 400 si algún dato es inválido
         String nacionalidad = nacionalidadService.obtenerNombreValido(request.getNacionalidad());
 
@@ -83,15 +79,19 @@ public class ClienteServiceImpl implements ClienteService {
         // Un solo save: la cascada inserta también el domicilio, la cuenta y el login.
         Cliente guardado = clienteRepository.save(cliente);
         log.info("Cliente registrado id={} con cuenta={}", guardado.getId(), guardado.getCuenta().getNumeroCuenta());
-        return clienteMapper.aRespuesta(guardado);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente registrado correctamente");
+        respuesta.setDatos(clienteMapper.aRespuesta(guardado));
+        return respuesta;
     }
 
     // ======================== Actualización ========================
 
     @Override
-    @Transactional
-    public ClienteResponse actualizar(Integer id, ClienteUpdateRequest request) {
-        validador.validarActualizacion(id, request);
+    public GenericResponse actualizar(ClienteRequest request) {
+        validador.validarActualizacion(request);
+        Integer id = request.getId();
         controlAcceso.verificarPropietario(id);
         String nacionalidad = nacionalidadService.obtenerNombreValido(request.getNacionalidad());
 
@@ -109,17 +109,21 @@ public class ClienteServiceImpl implements ClienteService {
         // saveAndFlush manda el UPDATE en este momento, para que la respuesta
         // ya traiga la fecha de actualización nueva.
         cliente.setNacionalidad(nacionalidad);
-        clienteRepository.saveAndFlush(cliente);
+        cliente = clienteRepository.saveAndFlush(cliente);
         log.info("Cliente actualizado id={}", id);
-        return clienteMapper.aRespuesta(cliente);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente actualizado correctamente");
+        respuesta.setDatos(clienteMapper.aRespuesta(cliente));
+        return respuesta;
     }
 
     // ========================= Baja lógica =========================
 
     @Override
-    @Transactional
-    public void darDeBaja(Integer id) {
-        validador.validarId(id);
+    public GenericResponse darDeBaja(ClienteRequest request) {
+        validador.validarBaja(request);
+        Integer id = request.getId();
         controlAcceso.verificarPropietario(id);
 
         Cliente cliente = obtener(clienteRepository.buscarPorId(id), "id " + id);
@@ -127,70 +131,162 @@ public class ClienteServiceImpl implements ClienteService {
             throw new ClienteInactivoException("El cliente " + id + " ya estaba dado de baja");
         }
         cliente.darDeBaja();
+        clienteRepository.save(cliente);
         log.info("Cliente dado de baja id={} (cuenta {} inactivada)", id, cliente.getCuenta().getNumeroCuenta());
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente dado de baja correctamente");
+        respuesta.setDatos(null);
+        return respuesta;
     }
 
     // ========================== Consultas ==========================
 
     @Override
-    public List<ClienteResponse> consultarTodos() {
-        return clienteAutenticado()
+    public GenericResponse consultarTodos() {
+        List<ClienteResponse> clientes = clienteAutenticado()
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Consulta de clientes realizada correctamente");
+        respuesta.setDatos(clientes);
+        return respuesta;
     }
 
     @Override
-    public List<ClienteResponse> consultarActivos() {
-        return clienteAutenticado()
+    public GenericResponse consultar(ClienteRequest criterios) {
+        validador.validarConsulta(criterios);
+        if (criterios.getFechaRegistroDesde() != null && criterios.getFechaRegistroHasta() != null
+                && criterios.getFechaRegistroDesde().isAfter(criterios.getFechaRegistroHasta())) {
+            throw new ValidacionException(
+                    "El rango de fechas de registro no es válido",
+                    List.of("fechaRegistroDesde: debe ser igual o anterior a fechaRegistroHasta"));
+        }
+
+        Integer clienteId = controlAcceso.obtenerClienteAutenticado();
+        String correo = clienteMapper.normalizarCorreo(criterios.getCorreo());
+        List<ClienteResponse> clientes = clienteRepository.buscarPorCriterios(
+                        clienteId,
+                        criterios.getId(),
+                        normalizarIdentificador(criterios.getCurp()),
+                        normalizarIdentificador(criterios.getRfc()),
+                        correo,
+                        criterios.getNumeroCuenta(),
+                        criterios.getActivo(),
+                        criterios.getFechaRegistroDesde(),
+                        criterios.getFechaRegistroHasta())
+                .stream()
+                .map(clienteMapper::aRespuesta)
+                .toList();
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Consulta de clientes realizada correctamente");
+        respuesta.setDatos(clientes);
+        return respuesta;
+    }
+
+    @Override
+    public GenericResponse consultar(ConsultaClienteRequest criterios) {
+        ClienteRequest requestExistente = new ClienteRequest();
+        requestExistente.setId(criterios.getId());
+        requestExistente.setCurp(criterios.getCurp());
+        requestExistente.setRfc(criterios.getRfc());
+        requestExistente.setCorreo(criterios.getCorreo());
+        requestExistente.setNumeroCuenta(criterios.getNumeroCuenta());
+        requestExistente.setActivo(criterios.getActivo());
+        requestExistente.setFechaRegistroDesde(criterios.getFechaRegistroDesde());
+        requestExistente.setFechaRegistroHasta(criterios.getFechaRegistroHasta());
+        return consultar(requestExistente);
+    }
+
+    @Override
+    public GenericResponse consultarActivos() {
+        List<ClienteResponse> clientes = clienteAutenticado()
                 .filter(Cliente::isActivo)
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Consulta de clientes activos realizada correctamente");
+        respuesta.setDatos(clientes);
+        return respuesta;
     }
 
     @Override
-    public List<ClienteResponse> consultarRegistradosEntre(String desde, String hasta) {
+    public GenericResponse consultarRegistradosEntre(String desde, String hasta) {
         LocalDate[] rango = validador.validarRango(desde, hasta);
-        return clienteAutenticado()
+        List<ClienteResponse> clientes = clienteAutenticado()
                 .filter(cliente -> !cliente.getFechaRegistro().isBefore(rango[0])
                         && !cliente.getFechaRegistro().isAfter(rango[1]))
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Consulta de clientes por fecha realizada correctamente");
+        respuesta.setDatos(clientes);
+        return respuesta;
     }
 
     @Override
-    public ClienteResponse consultarPorId(Integer id) {
+    public GenericResponse consultarPorId(Integer id) {
         validador.validarId(id);
         controlAcceso.verificarPropietario(id);
-        return clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorId(id), "id " + id));
+        ClienteResponse cliente = clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorId(id), "id " + id));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente encontrado");
+        respuesta.setDatos(cliente);
+        return respuesta;
     }
 
     @Override
-    public ClienteResponse consultarPorCurp(String curp) {
+    public GenericResponse consultarPorCurp(String curp) {
         validador.validarCurp(curp);
-        return responderSiEsPropietario(obtener(clienteRepository.buscarPorCurp(curp), "CURP " + curp));
+        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorCurp(curp), "CURP " + curp));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente encontrado");
+        respuesta.setDatos(cliente);
+        return respuesta;
     }
 
     @Override
-    public ClienteResponse consultarPorRfc(String rfc) {
+    public GenericResponse consultarPorRfc(String rfc) {
         validador.validarRfc(rfc);
-        return responderSiEsPropietario(obtener(clienteRepository.buscarPorRfc(rfc), "RFC " + rfc));
+        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorRfc(rfc), "RFC " + rfc));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente encontrado");
+        respuesta.setDatos(cliente);
+        return respuesta;
     }
 
     @Override
-    public ClienteResponse consultarPorCorreo(String correo) {
+    public GenericResponse consultarPorCorreo(String correo) {
         validador.validarCorreo(correo);
         String normalizado = clienteMapper.normalizarCorreo(correo);
-        return responderSiEsPropietario(obtener(clienteRepository.buscarPorCorreo(normalizado), "correo " + normalizado));
+        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorCorreo(normalizado), "correo " + normalizado));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente encontrado");
+        respuesta.setDatos(cliente);
+        return respuesta;
     }
 
     @Override
-    public ClienteResponse consultarPorNumeroCuenta(String numeroCuenta) {
+    public GenericResponse consultarPorNumeroCuenta(String numeroCuenta) {
         validador.validarNumeroCuenta(numeroCuenta);
-        return responderSiEsPropietario(
+        ClienteResponse cliente = responderSiEsPropietario(
                 obtener(clienteRepository.buscarPorNumeroCuenta(numeroCuenta), "número de cuenta " + numeroCuenta));
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje("Cliente encontrado");
+        respuesta.setDatos(cliente);
+        return respuesta;
     }
 
     // ===================== Métodos de apoyo =====================
@@ -222,5 +318,9 @@ public class ClienteServiceImpl implements ClienteService {
     private ClienteResponse responderSiEsPropietario(Cliente cliente) {
         controlAcceso.verificarPropietario(cliente.getId());
         return clienteMapper.aRespuesta(cliente);
+    }
+
+    private String normalizarIdentificador(String identificador) {
+        return identificador == null ? null : identificador.trim().toUpperCase(Locale.ROOT);
     }
 }

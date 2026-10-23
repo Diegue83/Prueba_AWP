@@ -17,9 +17,10 @@ public class ErrorResponse extends GenericResponse {
     private String error;
     private List<String> detalles;
 
-    public ErrorResponse(int codigo, String error, String mensaje, List<String> detalles) {
-        setCodigo(codigo);
+    public ErrorResponse(String error, String mensaje, List<String> detalles) {
+        setCodigo(1);
         setMensaje(mensaje);
+        setDatos(detalles);
         this.error = error;
         this.detalles = detalles;
     }

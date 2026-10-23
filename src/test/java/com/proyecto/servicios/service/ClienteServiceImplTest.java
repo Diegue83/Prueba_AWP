@@ -13,9 +13,10 @@ import com.proyecto.servicios.exception.CurpDuplicadaException;
 import com.proyecto.servicios.exception.RfcDuplicadoException;
 import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.mapper.ClienteMapper;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
 import com.proyecto.servicios.model.onboarding.ClienteResponse;
-import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
+import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.service.Impl.ClienteServiceImpl;
@@ -31,6 +32,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static com.proyecto.servicios.service.DatosDePrueba.CONTRASENA;
@@ -42,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -83,8 +87,11 @@ class ClienteServiceImplTest {
         when(cuentaRepository.siguienteNumeroCuenta()).thenReturn(1000000001L);
         when(clienteRepository.save(any(Cliente.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-        ClienteResponse respuesta = servicio.registrar(DatosDePrueba.solicitudDeAlta());
+        GenericResponse envelope = servicio.registrar(DatosDePrueba.solicitudDeAlta());
+        ClienteResponse respuesta = (ClienteResponse) envelope.getDatos();
 
+        assertThat(envelope.getCodigo()).isZero();
+        assertThat(envelope.getMensaje()).isEqualTo("Cliente registrado correctamente");
         assertThat(respuesta.isActivo()).isTrue();
         assertThat(respuesta.getCurp()).isEqualTo(CURP);
         assertThat(respuesta.getCorreo()).isEqualTo(CORREO);                 // normalizado a minúsculas
@@ -188,14 +195,18 @@ class ClienteServiceImplTest {
     @Test
     void actualizarCambiaDatosPeroConservaCurpRfcYCuenta() {
         when(clienteRepository.buscarPorId(1)).thenReturn(Optional.of(DatosDePrueba.clienteExistente("hash")));
+        when(clienteRepository.saveAndFlush(any(Cliente.class)))
+                .thenAnswer(invocacion -> invocacion.getArgument(0));
 
-        ClienteUpdateRequest cambios = new ClienteUpdateRequest();
+        ClienteRequest cambios = new ClienteRequest();
+        cambios.setId(1);
         DatosDePrueba.llenarDatos(cambios);
         cambios.setNombre("Fernanda");
         cambios.setCorreo("nuevo@correo.com");
         cambios.getDomicilio().setCodigoPostal("37000");
 
-        ClienteResponse respuesta = servicio.actualizar(1, cambios);
+        GenericResponse envelope = servicio.actualizar(cambios);
+        ClienteResponse respuesta = (ClienteResponse) envelope.getDatos();
 
         assertThat(respuesta.getNombre()).isEqualTo("Fernanda");
         assertThat(respuesta.getCorreo()).isEqualTo("nuevo@correo.com");
@@ -207,11 +218,23 @@ class ClienteServiceImplTest {
 
     @Test
     void actualizarConDatosInvalidosNoConsultaLaBaseDeDatos() {
-        ClienteUpdateRequest cambios = new ClienteUpdateRequest();
+        ClienteRequest cambios = new ClienteRequest();
+        cambios.setId(1);
         DatosDePrueba.llenarDatos(cambios);
         cambios.setFechaNacimiento("12/03/1995");
 
-        assertThatThrownBy(() -> servicio.actualizar(1, cambios)).isInstanceOf(ValidacionException.class);
+        assertThatThrownBy(() -> servicio.actualizar(cambios)).isInstanceOf(ValidacionException.class);
+        verify(clienteRepository, never()).buscarPorId(any());
+    }
+
+    @Test
+    void actualizarSinIdEnElCuerpoRechazaLaSolicitudAntesDeConsultarLaBase() {
+        ClienteRequest cambios = new ClienteRequest();
+        DatosDePrueba.llenarDatos(cambios);
+
+        assertThatThrownBy(() -> servicio.actualizar(cambios))
+                .isInstanceOf(ValidacionException.class)
+                .hasFieldOrPropertyWithValue("detalles", List.of("id: es obligatorio y debe ser un número entero"));
         verify(clienteRepository, never()).buscarPorId(any());
     }
 
@@ -220,10 +243,11 @@ class ClienteServiceImplTest {
         when(clienteRepository.buscarPorId(1)).thenReturn(Optional.of(DatosDePrueba.clienteExistente("hash")));
         when(clienteRepository.existeCorreoEnOtroCliente(CORREO, 1)).thenReturn(true);
 
-        ClienteUpdateRequest cambios = new ClienteUpdateRequest();
+        ClienteRequest cambios = new ClienteRequest();
+        cambios.setId(1);
         DatosDePrueba.llenarDatos(cambios);
 
-        assertThatThrownBy(() -> servicio.actualizar(1, cambios))
+        assertThatThrownBy(() -> servicio.actualizar(cambios))
                 .isInstanceOf(ClienteYaRegistradoException.class);
     }
 
@@ -233,10 +257,11 @@ class ClienteServiceImplTest {
         inactivo.darDeBaja();
         when(clienteRepository.buscarPorId(1)).thenReturn(Optional.of(inactivo));
 
-        ClienteUpdateRequest cambios = new ClienteUpdateRequest();
+        ClienteRequest cambios = new ClienteRequest();
+        cambios.setId(1);
         DatosDePrueba.llenarDatos(cambios);
 
-        assertThatThrownBy(() -> servicio.actualizar(1, cambios))
+        assertThatThrownBy(() -> servicio.actualizar(cambios))
                 .isInstanceOf(ClienteInactivoException.class);
     }
 
@@ -247,10 +272,13 @@ class ClienteServiceImplTest {
         Cliente existente = DatosDePrueba.clienteExistente("hash");
         when(clienteRepository.buscarPorId(1)).thenReturn(Optional.of(existente));
 
-        servicio.darDeBaja(1);
+        ClienteRequest baja = new ClienteRequest();
+        baja.setId(1);
+        servicio.darDeBaja(baja);
 
         assertThat(existente.isActivo()).isFalse();
         assertThat(existente.getCuenta().getEstatus()).isEqualTo(EstatusCuenta.INACTIVA);
+        verify(clienteRepository).save(existente);
         verify(clienteRepository, never()).delete(any());
         verify(clienteRepository, never()).deleteById(any());
     }
@@ -280,7 +308,77 @@ class ClienteServiceImplTest {
         when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
         when(clienteRepository.buscarPorId(1)).thenReturn(Optional.empty());
 
-        assertThat(servicio.consultarTodos()).isEmpty();
+        assertThat((List<?>) servicio.consultarTodos().getDatos()).isEmpty();
+    }
+
+    @Test
+    void consultarCombinaFiltrosYLimitaLaBusquedaAlClienteAutenticado() {
+        LocalDate desde = LocalDate.parse("2025-01-01");
+        LocalDate hasta = LocalDate.parse("2025-12-31");
+        when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
+        when(clienteRepository.buscarPorCriterios(
+                1, null, CURP, RFC, CORREO, NUMERO_CUENTA, true, desde, hasta))
+                .thenReturn(List.of(DatosDePrueba.clienteExistente("hash")));
+        ClienteRequest criterios = new ClienteRequest();
+        criterios.setCurp(CURP.toLowerCase());
+        criterios.setRfc(RFC.toLowerCase());
+        criterios.setCorreo(CORREO.toUpperCase());
+        criterios.setNumeroCuenta(NUMERO_CUENTA);
+        criterios.setActivo(true);
+        criterios.setFechaRegistroDesde(desde);
+        criterios.setFechaRegistroHasta(hasta);
+
+        GenericResponse envelope = servicio.consultar(criterios);
+        List<?> resultados = (List<?>) envelope.getDatos();
+
+        assertThat(resultados).hasSize(1);
+        assertThat(((ClienteResponse) resultados.get(0)).getCurp()).isEqualTo(CURP);
+        verify(clienteRepository).buscarPorCriterios(
+                eq(1), eq(null), eq(CURP), eq(RFC), eq(CORREO), eq(NUMERO_CUENTA), eq(true), eq(desde), eq(hasta));
+    }
+
+    @Test
+    void consultaConRequestEspecificoConservaLosFiltrosYElAlcanceDelTitular() {
+        LocalDate desde = LocalDate.parse("2025-01-01");
+        LocalDate hasta = LocalDate.parse("2025-12-31");
+        when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
+        when(clienteRepository.buscarPorCriterios(
+                1, null, null, null, null, null, true, desde, hasta))
+                .thenReturn(List.of());
+
+        ConsultaClienteRequest criterios = new ConsultaClienteRequest();
+        criterios.setActivo(true);
+        criterios.setFechaRegistroDesde(desde);
+        criterios.setFechaRegistroHasta(hasta);
+
+        assertThat((List<?>) servicio.consultar(criterios).getDatos()).isEmpty();
+        verify(clienteRepository).buscarPorCriterios(
+                eq(1), eq(null), eq(null), eq(null), eq(null), eq(null), eq(true), eq(desde), eq(hasta));
+    }
+
+    @Test
+    void consultarRechazaRangoDeFechasInvertidoAntesDeConsultarLaBase() {
+        ClienteRequest criterios = new ClienteRequest();
+        criterios.setFechaRegistroDesde(LocalDate.parse("2025-12-31"));
+        criterios.setFechaRegistroHasta(LocalDate.parse("2025-01-01"));
+
+        assertThatThrownBy(() -> servicio.consultar(criterios))
+                .isInstanceOf(ValidacionException.class)
+                .hasMessageContaining("rango de fechas");
+        verify(clienteRepository, never()).buscarPorCriterios(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void consultaRechazaCamposQueNoSonCriteriosDeBusqueda() {
+        ClienteRequest criterios = new ClienteRequest();
+        criterios.setNombre("Zayda");
+
+        assertThatThrownBy(() -> servicio.consultar(criterios))
+                .isInstanceOf(ValidacionException.class)
+                .hasFieldOrProperty("detalles");
+        verify(clienteRepository, never()).buscarPorCriterios(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

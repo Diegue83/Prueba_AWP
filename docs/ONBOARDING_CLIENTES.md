@@ -85,18 +85,26 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
 
 ## 4. Cómo está programada la lógica
 
-- **Validaciones en funciones, fuera del modelo.** Los DTO no llevan anotaciones: solo transportan datos.
-  `validation/Validaciones.java` tiene una función por tipo de dato (`soloLetras`, `curp`, `rfc`, `correo`,
-  `telefono`, `codigoPostal`, `monto`, `fecha`, `fechaNacimiento`, `catalogo`, `contrasenaNueva`…).
-  `validation/ClienteValidador.java` las aplica campo por campo en cada endpoint, junta **todos** los errores
-  y lanza `ValidacionException`, que se responde como **400 Bad Request** con el detalle de cada campo.
-- **Campos desconocidos se rechazan.** Todos los cuerpos heredan de `SolicitudEstricta`: si el JSON trae un
-  campo que no existe (por ejemplo `curp` en una actualización), responde 400.
+- **Validación de entrada.** Los DTO usan Bean Validation (`@NotBlank`, `@Size`, `@Email`, `@Pattern`,
+  `@Positive`, entre otras) y los controladores reciben DTO con `@Valid`. `ClienteValidador` conserva las
+  reglas de negocio que requieren validar coherencia entre campos, como mayoría de edad y coincidencia
+  de CURP/RFC con los datos personales. El manejador global devuelve los errores como **400 Bad Request**
+  con todos los mensajes agrupados por campo en `datos`, además del mensaje general y la lista plana en
+  `detalles`. Si un campo incumple varias reglas Bean Validation, se informan todas.
+- **Requests por operación.** `ClienteRequest` se usa para alta, actualización y baja; las búsquedas
+  tienen DTOs independientes `ConsultaClienteRequest` y `ConsultaCuentaRequest`, cuyos campos son
+  filtros opcionales. `CuentaRequest`, `NacionalidadRequest`, `LoginRequest`, `PersonasRequest` y el
+  `DomicilioRequest` anidado se usan en sus operaciones correspondientes.
+- **Campos desconocidos se rechazan.** Los requests del onboarding heredan de `SolicitudEstricta`: si el JSON trae un
+  campo que no existe, responde 400. Los campos conocidos pero prohibidos en una operación, como CURP o RFC
+  durante una actualización, también se rechazan.
 - **Enums con código de un carácter.** `Sexo`, `EstadoCivil` y `EstatusCuenta` implementan `Catalogo`.
   La API acepta el nombre (`MUJER`) o el código (`M`); un `AttributeConverter` guarda solo el código.
 - **Entidades con relaciones y comportamiento.** `Cliente` es la raíz: tiene `@OneToOne` con cascada hacia
-  `Domicilio`, `Cuenta` y `Login`, así que un solo `save()` inserta las cuatro tablas en una transacción.
+  `Domicilio`, `Cuenta` y `Login`, así que un solo `save()` guarda las cuatro tablas.
   Las reglas viven en la entidad: `abrirCuenta()`, `crearAcceso()` y `darDeBaja()` (que inactiva la cuenta).
+- **Persistencia sin `@Transactional` en servicios.** Los servicios llaman explícitamente a `save` o
+  `saveAndFlush` cuando cambian una entidad; las operaciones del repositorio gestionan su persistencia.
 - **Consultas JPQL con `@Query`** y `JOIN FETCH`: todo sale en un solo `SELECT`. El saldo se consulta con
   una proyección que trae solo esa columna.
 - **Login.** La contraseña se guarda como hash BCrypt (nunca en claro ni en las respuestas). Errores
@@ -106,8 +114,13 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
   `POST /clientes` (alta). El token identifica al cliente; las consultas y modificaciones por ID
   comprueban que el recurso pertenezca a ese cliente. Los listados solo devuelven los recursos propios.
   El login, el alta y el catálogo de nacionalidades son públicos.
-- **Excepciones.** Todas heredan de `NegocioException`, que lleva su código HTTP, su clave y sus detalles;
-  `GlobalExceptionHandler` las traduce a un mismo formato JSON.
+- **Excepciones.** Las excepciones de negocio heredan de `NegocioException`, que lleva su código HTTP,
+  clave y detalles. `GlobalExceptionHandler` también procesa errores de Bean Validation y JSON ilegible
+  y responde en un mismo formato JSON.
+- **Respuesta de endpoints.** Todas las operaciones responden con `GenericResponse`: `codigo`, `mensaje`
+  y `datos`. El resultado propio de cada consulta (cliente, lista, cuenta, saldo, nacionalidad o login)
+  se devuelve dentro de `datos`; los errores de validación exponen sus mensajes en `mensaje` y `detalles`.
+  El código funcional es `0` para éxito y `1` para error; el estado HTTP se mantiene por separado.
 
 ## 5. Validaciones por campo
 
@@ -133,9 +146,9 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
 | empresa | Obligatoria, 2 a 80 |
 | ingresoMensual | Obligatorio, mayor a cero, máximo 2 decimales y 10 enteros |
 | contrasena (alta) | Obligatoria, 8 a 72, sin espacios, con mayúscula, minúscula y dígito |
-| id (URL) | Entero positivo |
-| numeroCuenta (URL) | Exactamente 10 dígitos |
-| desde / hasta (URL) | Fechas `AAAA-MM-DD`; `desde` no posterior a `hasta` |
+| id (cuerpo) | Entero positivo |
+| numeroCuenta (cuerpo) | Exactamente 10 dígitos |
+| fechaRegistroDesde / fechaRegistroHasta (cuerpo) | Fechas `AAAA-MM-DD`; desde no posterior a hasta |
 
 ## 6. Reglas de negocio y dónde se cumplen
 
@@ -147,34 +160,53 @@ Script de creación: `../src/main/resources/db/migration/V2__onboarding_clientes
 | Saldo inicial no negativo | `OnboardingProperties`, `Cuenta.abrir`, `CHECK` |
 | Número de cuenta único | Secuencia + `UNIQUE` |
 | Solo clientes activos con cuentas activas | `Cliente.abrirCuenta` y `Cliente.darDeBaja` |
-| CURP, RFC y número de cuenta no modificables | `ClienteUpdateRequest` (campo desconocido → 400) + `updatable = false` |
-| Baja lógica | `DELETE /clientes/{id}` solo cambia `activo` y `estatus` |
+| CURP, RFC y número de cuenta no modificables | El request común los rechaza durante la actualización + `updatable = false` |
+| Baja lógica | `DELETE /clientes` recibe el `id` en el body y solo cambia `activo` y `estatus` |
 
 ## 7. Endpoints
 
 | Método | Ruta | Descripción | Éxito |
 |---|---|---|---|
 | POST | `/clientes` | Registra cliente, abre su cuenta y crea su login | 201 |
-| GET | `/clientes` | Todos los clientes | 200 |
-| GET | `/clientes/{id}` | Cliente por id | 200 |
-| PUT | `/clientes/{id}` | Actualiza datos modificables | 200 |
-| DELETE | `/clientes/{id}` | Baja lógica | 204 |
-| GET | `/clientes/activos` | Clientes activos | 200 |
-| GET | `/clientes/curp/{curp}` | Cliente por CURP | 200 |
-| GET | `/clientes/rfc/{rfc}` | Cliente por RFC | 200 |
-| GET | `/clientes/correo?correo=` | Cliente por correo | 200 |
-| GET | `/clientes/cuenta/{numeroCuenta}` | Cliente por número de cuenta | 200 |
-| GET | `/clientes/registrados?desde=&hasta=` | Registrados en un rango de fechas | 200 |
-| GET | `/cuentas/{numeroCuenta}` | Cuenta por número | 200 |
+| POST | `/clientes/consulta` | Busca combinando los filtros del body | 200 |
+| PUT | `/clientes` | Actualiza datos modificables; el body incluye `id` y `datos` | 200 |
+| DELETE | `/clientes` | Baja lógica; el body incluye `id` | 200 |
+| POST | `/cuentas/consulta` | Busca cuentas combinando los filtros del body | 200 |
 | GET | `/cuentas/activas` | Cuentas activas | 200 |
-| GET | `/cuentas/{numeroCuenta}/saldo` | Saldo de una cuenta | 200 |
+| POST | `/cuentas/saldo` | Saldo por número recibido en el body | 200 |
+| POST | `/nacionalidades/consulta` | Verifica una nacionalidad mediante el body | 200 |
 | POST | `/login` | Inicio de sesión con correo y contraseña | 200 |
 
 En todas las rutas protegidas se debe enviar `Authorization: Bearer <token>` con el token recibido
-en el login. Las operaciones sobre `/clientes/{id}` y `/cuentas/{numeroCuenta}` solo se autorizan
-para el titular autenticado; de lo contrario responden `403 ACCESO_DENEGADO`. La ausencia de token,
+en el login. La búsqueda de clientes limita resultados al titular autenticado; la actualización y la baja
+verifican que el `id` del body corresponda a ese titular. La ausencia de token,
 un token inválido o expirado responden `401 NO_AUTENTICADO`. Los endpoints de listados de clientes
-y cuentas requieren token y devuelven únicamente los recursos de ese titular.
+y cuentas requieren token; las cuentas listadas corresponden únicamente al titular autenticado.
+
+Los criterios de `/clientes/consulta` son opcionales y se combinan entre sí; admite `id`, `curp`,
+`rfc`, `correo`, `numeroCuenta`, `activo`, `fechaRegistroDesde` y `fechaRegistroHasta`. El body `{}`
+consulta el cliente autenticado. Ejemplo:
+
+```json
+{
+  "activo": true,
+  "correo": "zayda@correo.com",
+  "fechaRegistroDesde": "2025-01-01",
+  "fechaRegistroHasta": "2025-12-31"
+}
+```
+
+Los criterios de `/cuentas/consulta` también son opcionales y combinables: `numeroCuenta`, `estatus`,
+`fechaAperturaDesde` y `fechaAperturaHasta`. La búsqueda siempre se limita a las cuentas del titular
+autenticado. Ejemplo:
+
+```json
+{
+  "estatus": "ACTIVA",
+  "fechaAperturaDesde": "2025-01-01",
+  "fechaAperturaHasta": "2025-12-31"
+}
+```
 
 ### Errores
 
@@ -188,22 +220,31 @@ y cuentas requieren token y devuelven únicamente los recursos de ese titular.
 | 404 | `CLIENTE_NO_ENCONTRADO` / `CUENTA_NO_ENCONTRADA` | Consulta sin resultado |
 | 409 | `CURP_DUPLICADA` / `RFC_DUPLICADO` / `CLIENTE_YA_REGISTRADO` | Duplicados |
 | 409 | `CLIENTE_INACTIVO` | Cliente dado de baja |
+| 500 | `ERROR_INTERNO` | Error inesperado; se registra internamente y no se exponen detalles técnicos |
 
 ```json
 {
-  "codigo": 400,
-  "mensaje": "La información enviada no es válida",
+  "codigo": 1,
+  "mensaje": "La información enviada no cumple las reglas de validación",
+  "datos": {
+    "nombre": ["es obligatorio", "debe tener entre 3 y 50 caracteres", "solo admite letras y espacios"],
+    "telefonoMovil": ["debe contener exactamente 10 dígitos"],
+    "ingresoMensual": ["debe ser mayor que cero"]
+  },
   "error": "ERROR_VALIDACION",
   "detalles": [
+    "nombre: es obligatorio",
+    "nombre: debe tener entre 3 y 50 caracteres",
     "nombre: solo admite letras y espacios",
     "telefonoMovil: debe contener exactamente 10 dígitos",
-    "ingresoMensual: admite máximo 2 decimales"
+    "ingresoMensual: debe ser mayor que cero"
   ]
 }
 ```
 
-Los errores de validación incluyen una lista `detalles` por campo, con el requisito concreto
-(formato, longitud, rango u opciones admitidas). Por ejemplo, un correo inválido indica el patrón
+Los errores de validación incluyen una entrada en `datos` por cada campo y todos sus mensajes, además
+de una lista plana `detalles` para consumidores existentes. Se incluye el requisito concreto (formato,
+longitud, rango u opciones admitidas). Por ejemplo, un correo inválido indica el patrón
 esperado; un tipo incompatible en JSON señala la ruta del campo y el tipo requerido. Si el cuerpo
 es `null`, la respuesta indica que debe enviarse un objeto JSON. Las respuestas no repiten
 contraseñas ni otros valores enviados.
@@ -240,7 +281,36 @@ contraseñas ni otros valores enviados.
 }
 ```
 
-Para el `PUT /clientes/{id}` se envía el mismo JSON **sin** `curp`, `rfc` ni `contrasena`.
+Para actualizar, se envía un solo objeto con el identificador y los datos modificables; los campos controlados
+por el servidor (CURP, RFC, contraseña, número de cuenta, fechas de registro y estado) no se aceptan.
+La respuesta de consulta incluye el `id` asignado por el servidor para poder dirigir una actualización o baja.
+
+```json
+{
+  "id": 1,
+  "nombre": "Zayda",
+  "apellidoPaterno": "Vargas",
+  "apellidoMaterno": "Vargas",
+  "fechaNacimiento": "1995-03-12",
+  "sexo": "M",
+  "nacionalidad": "Mexicana",
+  "estadoCivil": "S",
+  "correo": "zayda@correo.com",
+  "telefonoMovil": "4181234567",
+  "domicilio": {
+    "calle": "Hidalgo",
+    "numeroExterior": "12",
+    "colonia": "Centro",
+    "municipio": "Dolores Hidalgo",
+    "estado": "Guanajuato",
+    "codigoPostal": "37800",
+    "pais": "México"
+  },
+  "ocupacion": "Ingeniera",
+  "empresa": "UTNG",
+  "ingresoMensual": 15000.00
+}
+```
 
 ### Ejemplo de login (POST /login)
 

@@ -1,15 +1,16 @@
 package com.proyecto.servicios.service;
 
-import com.proyecto.servicios.model.onboarding.CuentaResponse;
-import com.proyecto.servicios.model.onboarding.SaldoResponse;
-
-import java.util.List;
+import com.proyecto.servicios.model.GenericResponse;
+import com.proyecto.servicios.model.onboarding.CuentaRequest;
+import com.proyecto.servicios.model.onboarding.ConsultaCuentaRequest;
 
 public interface CuentaService {
 
-    CuentaResponse consultarPorNumero(String numeroCuenta);
+    GenericResponse consultarPorNumero(CuentaRequest request);
 
-    List<CuentaResponse> consultarActivas();
+    GenericResponse consultar(ConsultaCuentaRequest request);
 
-    SaldoResponse consultarSaldo(String numeroCuenta);
+    GenericResponse consultarActivas();
+
+    GenericResponse consultarSaldo(CuentaRequest request);
 }

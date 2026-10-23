@@ -1,14 +1,17 @@
 package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.entity.onboarding.Cliente;
+import com.proyecto.servicios.entity.onboarding.Login;
 import com.proyecto.servicios.exception.ClienteInactivoException;
 import com.proyecto.servicios.exception.ContrasenaIncorrectaException;
 import com.proyecto.servicios.exception.CorreoNoEncontradoException;
 import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.mapper.ClienteMapper;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.LoginRequest;
 import com.proyecto.servicios.model.onboarding.LoginResponse;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
+import com.proyecto.servicios.repositorys.onboarding.LoginRepository;
 import com.proyecto.servicios.service.Impl.LoginServiceImpl;
 import com.proyecto.servicios.security.TokenService;
 import com.proyecto.servicios.validation.ClienteValidador;
@@ -39,6 +42,8 @@ class LoginServiceImplTest {
     @Mock
     private ClienteRepository clienteRepository;
     @Mock
+    private LoginRepository loginRepository;
+    @Mock
     private TokenService tokenService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
@@ -46,7 +51,7 @@ class LoginServiceImplTest {
 
     @BeforeEach
     void preparar() {
-        servicio = new LoginServiceImpl(clienteRepository, new ClienteMapper(), new ClienteValidador(),
+        servicio = new LoginServiceImpl(clienteRepository, loginRepository, new ClienteMapper(), new ClienteValidador(),
                 passwordEncoder, tokenService);
     }
 
@@ -54,12 +59,15 @@ class LoginServiceImplTest {
     void inicioDeSesionCorrecto() {
         when(clienteRepository.buscarPorCorreo(CORREO)).thenReturn(Optional.of(clienteRegistrado()));
 
-        LoginResponse respuesta = servicio.iniciarSesion(solicitud("Zayda@Correo.com", CONTRASENA));
+        GenericResponse envelope = servicio.iniciarSesion(solicitud("Zayda@Correo.com", CONTRASENA));
+        LoginResponse respuesta = (LoginResponse) envelope.getDatos();
 
+        assertThat(envelope.getCodigo()).isZero();
         assertThat(respuesta.getCorreo()).isEqualTo(CORREO);
         assertThat(respuesta.getNombreCompleto()).isEqualTo("Zayda Vargas Vargas");
         assertThat(respuesta.getNumeroCuenta()).isEqualTo(NUMERO_CUENTA);
         assertThat(respuesta.getUltimoAcceso()).isEqualTo(LocalDate.now());
+        verify(loginRepository).save(any(Login.class));
     }
 
     @Test
