@@ -7,12 +7,14 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.proyecto.servicios.model.onboarding.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
@@ -163,6 +165,19 @@ public class GlobalExceptionHandler {
         log.warn("Restricción de base de datos violada: {}", ex.getMostSpecificCause().getMessage());
         return responder(HttpStatus.CONFLICT, "CLIENTE_YA_REGISTRADO",
                 "La operación viola una restricción de datos (CURP, RFC, correo o cuenta ya registrados)", List.of());
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ErrorResponse> manejarEncabezadoFaltante(MissingRequestHeaderException ex) {
+        return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
+                "Falta un encabezado obligatorio",
+                List.of(ex.getHeaderName() + ": es obligatorio"));
+    }
+
+    /** Otra petición tiene bloqueada la misma cuenta o el mismo pago más allá del tiempo de espera. */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> manejarBloqueo(PessimisticLockingFailureException ex) {
+        return manejarNegocio(new OperacionEnCursoException());
     }
 
     @ExceptionHandler(Exception.class)

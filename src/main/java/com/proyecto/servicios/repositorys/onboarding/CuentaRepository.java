@@ -2,8 +2,12 @@ package com.proyecto.servicios.repositorys.onboarding;
 
 import com.proyecto.servicios.entity.onboarding.Cuenta;
 import com.proyecto.servicios.enums.EstatusCuenta;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -37,6 +41,20 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Integer> {
                                     @Param("estatus") EstatusCuenta estatus,
                                     @Param("desde") LocalDate desde,
                                     @Param("hasta") LocalDate hasta);
+
+    /**
+     * SELECT ... FOR UPDATE: serializa los movimientos de saldo de una misma cuenta.
+     * Si otra operación tiene la fila más de 5 s, se aborta en lugar de esperar indefinidamente.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
+    @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente WHERE cu.numeroCuenta = :numeroCuenta")
+    Optional<Cuenta> bloquearPorNumero(@Param("numeroCuenta") String numeroCuenta);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
+    @Query("SELECT cu FROM Cuenta cu WHERE cu.id = :id")
+    Optional<Cuenta> bloquearPorId(@Param("id") Integer id);
 
     /** Proyección: trae únicamente la columna saldo, no la cuenta completa. */
     @Query("SELECT cu.saldo FROM Cuenta cu WHERE cu.numeroCuenta = :numeroCuenta")

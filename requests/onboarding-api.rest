@@ -138,6 +138,39 @@ Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
 
 > {% client.test("GET /productos devuelve el catálogo", function() { client.assert(response.status === 200, "Esperado HTTP 200"); client.assert(response.body.datos.length > 0, "Esperado al menos un producto"); }); %}
 
+### 8c. Registrar el segundo factor (guardar el secreto en una app autenticadora)
+POST {{baseUrl}}/2fa/registro
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+
+### 8d. Activar el segundo factor con el código de 6 dígitos que muestra la app
+POST {{baseUrl}}/2fa/activar
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Content-Type: application/json
+
+{
+  "codigo": "123456"
+}
+
+### 8e. Pagar una recarga (Idempotency-Key nueva por operación; codigo2fa vigente)
+# @name pagar
+POST {{baseUrl}}/pagos
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "numeroCuenta": "{{crearCliente.response.body.datos.cuenta.numeroCuenta}}",
+  "idServicio": 2284,
+  "idProducto": 14302,
+  "monto": 100.00,
+  "telefono": "5512345678",
+  "codigo2fa": "123456"
+}
+
+### 8f. Consultar el estatus de un pago (útil cuando el pago respondió 202)
+GET {{baseUrl}}/pagos/{{pagar.response.body.datos.idPago}}
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+
 ### 9. Consultar una nacionalidad del catálogo
 POST {{baseUrl}}/nacionalidades/consulta
 Content-Type: application/json

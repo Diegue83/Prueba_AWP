@@ -14,10 +14,11 @@ public class SeguridadWebConfig implements WebMvcConfigurer {
         this.autenticacionInterceptor = autenticacionInterceptor;
     }
 
-    /** Protege los recursos de clientes, cuentas y productos; el interceptor exceptúa el POST de alta. */
+    /** Protege clientes, cuentas, productos, pagos y 2FA; el interceptor exceptúa el POST de alta. */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(autenticacionInterceptor)
-                .addPathPatterns("/clientes", "/clientes/**", "/cuentas", "/cuentas/**", "/productos", "/productos/**");
+                .addPathPatterns("/clientes", "/clientes/**", "/cuentas", "/cuentas/**", "/productos", "/productos/**",
+                        "/pagos", "/pagos/**", "/2fa", "/2fa/**");
     }
 }
