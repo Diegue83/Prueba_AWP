@@ -79,6 +79,9 @@ public class ConfigDB {
             properties.put("hibernate.show-sql", false);
             properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
             properties.put("jakarta.persistence.query.timeout", 600000);
+            properties.put("hibernate.jdbc.batch_size", 100);
+            properties.put("hibernate.order_inserts", true);
+            properties.put("hibernate.order_updates", true);
 
 
         } catch (Exception e) {

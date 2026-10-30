@@ -132,6 +132,12 @@ GET {{baseUrl}}/nacionalidades
 
 > {% client.test("GET /nacionalidades lista el catálogo", function() { client.assert(response.status === 200, "Esperado HTTP 200"); }); %}
 
+### 8b. Consultar catálogo de productos GestoPago (Redis, si no PostgreSQL)
+GET {{baseUrl}}/productos
+Authorization: Bearer {{iniciarSesion.response.body.datos.token}}
+
+> {% client.test("GET /productos devuelve el catálogo", function() { client.assert(response.status === 200, "Esperado HTTP 200"); client.assert(response.body.datos.length > 0, "Esperado al menos un producto"); }); %}
+
 ### 9. Consultar una nacionalidad del catálogo
 POST {{baseUrl}}/nacionalidades/consulta
 Content-Type: application/json
