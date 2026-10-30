@@ -205,7 +205,7 @@ class PagoHttpTest {
     }
 
     private PagoResponse respuesta(EstatusPago estatus) {
-        return new PagoResponse(10L, estatus, 14302, new BigDecimal("100.00"),
+        return new PagoResponse(10L, estatus, 14302, new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
                 estatus == EstatusPago.APLICADO ? "9001" : null, "01", "mensaje", LocalDateTime.now());
     }
 

@@ -13,25 +13,29 @@ queda en conciliación con el dinero retenido y un job lo resuelve con `confirmT
 POST /pagos  (Authorization: Bearer <jwt>, Idempotency-Key: <clave única>)
   1. Idempotency-Key ya usada?  -> misma solicitud: devuelve el pago existente (no recobra)
                                 -> otros datos: 409 IDEMPOTENCIA_CONFLICTO
-  2. Producto en catálogo (PostgreSQL), idServicio, tipo permitido,
-     monto = precio fijo o dentro de límites, teléfono/referencia      -> 400 / 404
+  2. Producto en catálogo (PostgreSQL), idServicio, tipoFront 1 o 2,
+     recarga: monto = precio; servicio: monto dentro de límites
+     y comisión = precio del catálogo; teléfono/referencia             -> 400 / 404
   3. Llave AES del proveedor configurada                               -> 503
   4. Código 2FA (TOTP) válido, no reutilizado, sin bloqueo             -> 401 / 403 / 423
   5. TX corta: SELECT ... FOR UPDATE de la cuenta, titular, cliente y
-     cuenta activos, saldo suficiente, saldo -= monto, INSERT pago
+     cuenta activos, saldo suficiente, saldo -= monto + comisión, INSERT pago
      PENDIENTE (UNIQUE upc y cliente+clave)                            -> 403 / 409
   6. sendTx (fuera de la TX, timeout 62 s, token Bearer de GestoPago)
        01                       -> APLICADO                             200
        otro código              -> RECHAZADO + reembolso                422
-       timeout / 5xx / 03 / XML ilegible -> confirmTx (mismo payload)
+       timeout / 5xx / 82 / 03 / XML ilegible:
+         si ya pasaron 62 s desde el envío -> confirmTx (mismo payload)
             01                  -> APLICADO                             200
-            código "no aplicada" configurado -> RECHAZADO + reembolso   422
+            70 (no aplicada)    -> RECHAZADO + reembolso                422
             cualquier otra cosa -> EN_CONCILIACION (saldo retenido)     202
+         si no han pasado 62 s -> EN_CONCILIACION; confirmTx lo hace el job  202
        token rechazado dos veces / sin token -> RECHAZADO + reembolso   502
 
 Job de conciliación (cada 5 min): PENDIENTE viejos y EN_CONCILIACION -> confirmTx
-       01 -> APLICADO; "no aplicada" -> RECHAZADO + reembolso;
+       01 -> APLICADO; 70 -> RECHAZADO + reembolso;
        sin respuesta -> intento++; al agotar intentos -> REVISION_MANUAL (saldo retenido)
+       más de 24 h desde el envío -> REVISION_MANUAL sin llamar (confirmTx ya no responde)
 
 GET /pagos/{id}  consulta el estatus de un pago propio (para los 202)
 ```
@@ -60,16 +64,21 @@ bloqueada. La llamada a GestoPago ocurre después, ya sin bloqueo. Alternativas 
 
 Con la retención el dinero nunca se usa dos veces y siempre hay un registro (`pagos`) que explica dónde está.
 
-**Un timeout no es un rechazo.** Timeout, error de red, 5xx, código 03 ("el carrier no responde") o
-una respuesta ilegible se tratan como INDETERMINADO: no se reembolsa ni se reintenta `sendTx`. Se
-consulta `confirmTx` con exactamente el mismo payload (mismo `upc` y `horaLocal`).
+**Un timeout no es un rechazo.** Timeout, error de red, 5xx, código 82 ("tiempo de espera alcanzado"),
+código 03 ("el carrier no responde") o una respuesta ilegible se tratan como INDETERMINADO: no se
+reembolsa ni se reintenta `sendTx`. Se consulta `confirmTx` con exactamente el mismo payload (mismo `upc`
+y `horaLocal`), respetando la especificación: nunca antes de 62 s desde el envío ni después de 24 h.
 
-**Un "no" de confirmTx no basta para devolver el dinero.** Mientras el proveedor no documente qué códigos
-de `confirmTx` garantizan que la operación no se aplicó, la lista `GESTOPAGO_TX_CODIGOS_NO_APLICADA` está
-vacía y el pago se queda en conciliación. Reembolsar con base en una suposición puede regalar el servicio.
+**Solo el código 70 de confirmTx libera el dinero.** Es la respuesta documentada para "La transacción no
+fue aplicada" (verificado contra el servicio con un UPC que nunca se envió). Cualquier otro código deja el
+pago en conciliación: reembolsar con base en una suposición puede regalar el servicio.
 
-**Reintento seguro solo cuando no se procesó.** Si GestoPago rechaza el token (401/403) se pide uno nuevo
-y se reintenta una vez: un 401 garantiza que la petición no se procesó.
+**La comisión la paga el cliente.** En los pagos de servicio (`tipoFront` 2) el `precio` del catálogo es la
+comisión de la transacción, no el importe: se retiene `monto + comisión` y ambos se guardan por separado.
+
+**Un token por día.** PuntoRed entrega tokens válidos por 24 h y prohíbe pedir uno en cada petición. Se
+reutiliza el guardado en `gestopago_tokens` y solo se renueva al vencer (23 h, con margen) o si el proveedor
+lo rechaza (401/403); en ese caso se reintenta una vez, porque el rechazo garantiza que no se procesó.
 
 **Validación contra PostgreSQL, no contra Redis.** Redis es la cache de lectura del catálogo; una regla
 de dinero no debe depender de un dato que se podría alterar en la cache.
@@ -101,6 +110,9 @@ de 500 → exactamente 5 aplicados y saldo 0; la misma clave enviada 12 veces �
 - Logs: solo trazabilidad (`idPago`, `clienteId`, `upc`, código, duración). Nunca token, `signed`,
   payload, teléfono, referencia, código 2FA ni secretos. Los errores HTTP no incluyen mensajes internos
   del proveedor ni trazas.
+- Bitácora (`gestopago_bitacora`): la especificación obliga a conservar cada petición y respuesta
+  intercambiada. Se guarda el JSON sin cifrar, el estatus HTTP, el XML de respuesta y la duración; nunca
+  el token ni `signed`. Se escribe fuera de la transacción del pago, así que se conserva aunque esta falle.
 
 ## 6. Respuestas HTTP
 
@@ -119,30 +131,38 @@ de 500 → exactamente 5 aplicados y saldo 0; la misma clave enviada 12 veces �
 | Token de GestoPago rechazado | 502 | `ERROR_AUTENTICACION_GESTOPAGO` |
 | Llaves no configuradas | 503 | `SERVICIO_NO_CONFIGURADO` |
 
-## 7. Contrato con GestoPago y supuestos
+## 7. Contrato con GestoPago
 
-Confirmado contra el servicio real:
-- `sendTx.do` y `confirmTx.do` reciben `application/x-www-form-urlencoded` con `random` y `signed`, y
-  responden HTTP 200 con XML aunque haya error (`RESPONSE/MENSAJE/CODIGO|TEXTO`, o
-  `AUTORIZACION/CODIGO_MENSAJE|MENSAJE`). Con parámetros inválidos responde código 04; sin cuerpo, 03.
+Fuente: *PuntoRed API Technical Specification* (documentación oficial en Postman). Verificado contra el
+servicio: la llave de prueba descifra el ejemplo cifrado de la especificación, y `confirmTx` de un UPC que
+nunca se envió responde código 70.
 
-Tomado de la documentación de integración del proveedor y pendiente de validar con la llave real:
-- `signed` = Base64(AES/CBC/PKCS5Padding(JSON)) con llave e IV fijos asignados por GestoPago.
-- JSON: `idServicio`, `idProducto`, `referencia`, `montoPago`, `telefono`, `horaLocal` (`yyyyMMddHHmmss`),
-  `upc` (identificador único de 15 caracteres), `unidad`.
-- Productos con `tipoReferencia = a` se identifican por teléfono (10 dígitos); los demás por referencia.
-- `tipoFront` 30 y 40 (envíos de dinero, depósitos bancarios) quedan excluidos (`pagos.tipos-front-permitidos`).
+- `sendTx.do` y `confirmTx.do` reciben `application/x-www-form-urlencoded` con `random` (timestamp) y
+  `signed` = Base64(AES-256-CBC/PKCS5Padding(JSON)), con la llave e IV que entrega PuntoRed. Responden
+  HTTP 200 con XML aunque haya error (`RESPONSE/MENSAJE/CODIGO|TEXTO`, o `AUTORIZACION/CODIGO_MENSAJE|MENSAJE`).
+- JSON: `idProducto`, `idServicio`, `telefono`, `horaLocal` (`yyyyMMddHHmmss`), `upc` (3–15 caracteres,
+  único), `unidad` (unidad comercial o sucursal, 3–25 caracteres) y, solo en pagos de servicio,
+  `referencia` y `montoPago`.
+- `tipoFront` 1 (recargas): el teléfono o la referencia van en `telefono`. `tipoFront` 2 (pagos):
+  `telefono` fijo en `1111111111`. `idCatTipoServicio` 10 y 11 (canjeables): `telefono` = `#1111111111`.
+  4 y 5 son consultas de referencia y 30/31/40 operaciones de efectivo: quedan excluidos.
+- Códigos: 01 éxito, 02 saldo insuficiente del distribuidor, 06 transacción duplicada, 82 tiempo de
+  espera alcanzado, 70 (confirmTx) no aplicada.
+- Duplicados en el proveedor: recargas con el mismo UPC en 15 min; pagos de servicio con el mismo UPC o
+  el mismo servicio y monto en 24 h.
+- `getProductList` debe llamarse una vez al día y como máximo 3; si se excede, PuntoRed bloquea la IP.
+  Por eso el catálogo se sirve desde PostgreSQL/Redis y la resincronización automática está apagada.
 
 ## 8. Configuración
 
 | Variable | Uso |
 |---|---|
 | `GESTOPAGO_TX_LLAVE_AES`, `GESTOPAGO_TX_IV_AES` | Llave (16/24/32 bytes) e IV (16 bytes) en Base64 |
-| `GESTOPAGO_TX_UNIDAD` | Unidad del distribuidor |
+| `GESTOPAGO_TX_UNIDAD` | Unidad comercial o sucursal que se reporta en cada venta (`083`) |
 | `GESTOPAGO_TX_READ_TIMEOUT_MS` | Timeout de lectura de sendTx/confirmTx (62000) |
-| `GESTOPAGO_TX_CODIGOS_INDETERMINADOS` | Códigos de sendTx que se consultan con confirmTx (03) |
-| `GESTOPAGO_TX_CODIGOS_NO_APLICADA` | Códigos de confirmTx que permiten reembolsar (vacío) |
-| `PAGOS_MONTO_MINIMO`, `PAGOS_MONTO_MAXIMO` | Límites de productos de monto abierto |
+| `GESTOPAGO_TX_CODIGOS_INDETERMINADOS` | Códigos de sendTx que se consultan con confirmTx (`03,82`) |
+| `GESTOPAGO_TX_CODIGOS_NO_APLICADA` | Códigos de confirmTx que permiten reembolsar (`70`) |
+| `PAGOS_MONTO_MINIMO`, `PAGOS_MONTO_MAXIMO` | Límites del monto en pagos de servicio |
 | `PAGOS_CONCILIACION_*` | Intervalo, antigüedad mínima y máximo de intentos del job |
 | `SEGUNDO_FACTOR_CLAVE_CIFRADO` | 32 bytes en Base64 (`openssl rand -base64 32`) |
 

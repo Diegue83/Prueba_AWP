@@ -5,21 +5,35 @@ import com.proyecto.servicios.entity.gestopago.GestoPagoProduct;
 import com.proyecto.servicios.exception.ProductoNoEncontradoException;
 import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.model.pagos.PagoRequest;
+import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.gestopago.GestoPagoProductRepository;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Reglas que dependen del catálogo. El producto se lee de PostgreSQL y no de Redis:
- * la cache es para consultas, pero una regla de dinero no debe depender de un dato que
- * alguien con acceso a Redis podría alterar.
+ * Reglas de la especificación de PuntoRed para sendTx. El producto se lee de PostgreSQL y no de
+ * Redis: una regla de dinero no debe depender de un dato que se podría alterar en la cache.
+ * <ul>
+ *   <li>tipoFront 1 (recargas): el precio del catálogo es el monto a cobrar y el teléfono o la
+ *       referencia viajan en el campo "telefono".</li>
+ *   <li>tipoFront 2 (pagos de servicio): el monto lo define el recibo, el precio del catálogo es la
+ *       comisión, "telefono" va fijo en 1111111111 y la referencia en "referencia".</li>
+ *   <li>idCatTipoServicio 10 y 11 (artículos canjeables): "telefono" va fijo en #1111111111.</li>
+ * </ul>
  */
 @Component
 public class PagoValidador {
 
-    private static final String REFERENCIA_TELEFONO = "a";
+    public static final int FRONT_RECARGA = 1;
+    public static final int FRONT_PAGO_SERVICIO = 2;
+    private static final String TELEFONO_FIJO = "1111111111";
+    private static final String TELEFONO_CANJEABLE = "#1111111111";
+    private static final Set<Integer> TIPOS_CANJEABLES = Set.of(10, 11);
+    private static final Set<String> REFERENCIA_EN_TELEFONO = Set.of("a", "ab");
 
     private final GestoPagoProductRepository productRepository;
     private final PagosProperties properties;
@@ -29,7 +43,7 @@ public class PagoValidador {
         this.properties = properties;
     }
 
-    public GestoPagoProduct validar(PagoRequest request) {
+    public PagoValidado validar(PagoRequest request) {
         GestoPagoProduct producto = productRepository.findById(request.getIdProducto())
                 .orElseThrow(() -> new ProductoNoEncontradoException(request.getIdProducto()));
 
@@ -39,19 +53,27 @@ public class PagoValidador {
         }
         if (!properties.getTiposFrontPermitidos().contains(producto.getTipoFront())) {
             errores.add("idProducto: este tipo de producto no se puede pagar por este medio");
+        } else {
+            validarMonto(producto, request, errores);
+            validarDestino(producto, request, errores);
         }
-        validarMonto(producto, request, errores);
-        validarDestino(producto, request, errores);
-
         if (!errores.isEmpty()) {
             throw new ValidacionException("La operación no cumple las reglas del producto", errores);
         }
-        return producto;
+
+        boolean esPagoServicio = producto.getTipoFront() == FRONT_PAGO_SERVICIO;
+        return new PagoValidado(
+                producto.getIdProducto(),
+                producto.getIdServicio(),
+                producto.getTipoFront(),
+                request.getMonto(),
+                esPagoServicio ? producto.getPrecio() : BigDecimal.ZERO,
+                telefonoParaEnvio(producto, request),
+                esPagoServicio ? request.getReferencia() : null);
     }
 
-    /** Precio fijo: debe coincidir exacto. Precio 0 en el catálogo: monto abierto dentro de los límites. */
     private void validarMonto(GestoPagoProduct producto, PagoRequest request, List<String> errores) {
-        if (producto.getPrecio().signum() > 0) {
+        if (producto.getTipoFront() == FRONT_RECARGA) {
             if (producto.getPrecio().compareTo(request.getMonto()) != 0) {
                 errores.add("monto: el producto tiene un precio fijo de " + producto.getPrecio().toPlainString());
             }
@@ -64,14 +86,34 @@ public class PagoValidador {
         }
     }
 
-    /** tipoReferencia "a" identifica al destino por número telefónico; los demás por referencia. */
     private void validarDestino(GestoPagoProduct producto, PagoRequest request, List<String> errores) {
-        if (REFERENCIA_TELEFONO.equals(producto.getTipoReferencia())) {
-            if (request.getTelefono() == null) {
-                errores.add("telefono: es obligatorio para este producto");
-            }
-        } else if (request.getReferencia() == null) {
-            errores.add("referencia: es obligatoria para este producto");
+        if (esCanjeable(producto)) {
+            return;
         }
+        if (producto.getTipoFront() == FRONT_PAGO_SERVICIO || !referenciaEnTelefono(producto)) {
+            if (request.getReferencia() == null) {
+                errores.add("referencia: es obligatoria para este producto");
+            }
+        } else if (request.getTelefono() == null) {
+            errores.add("telefono: es obligatorio para este producto");
+        }
+    }
+
+    private String telefonoParaEnvio(GestoPagoProduct producto, PagoRequest request) {
+        if (esCanjeable(producto)) {
+            return TELEFONO_CANJEABLE;
+        }
+        if (producto.getTipoFront() == FRONT_PAGO_SERVICIO) {
+            return TELEFONO_FIJO;
+        }
+        return referenciaEnTelefono(producto) ? request.getTelefono() : request.getReferencia();
+    }
+
+    private boolean esCanjeable(GestoPagoProduct producto) {
+        return TIPOS_CANJEABLES.contains(producto.getIdCatTipoServicio());
+    }
+
+    private boolean referenciaEnTelefono(GestoPagoProduct producto) {
+        return REFERENCIA_EN_TELEFONO.contains(producto.getTipoReferencia());
     }
 }

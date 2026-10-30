@@ -35,6 +35,8 @@ import java.util.Objects;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Pago {
 
+    private static final int FRONT_PAGO_SERVICIO = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -51,8 +53,14 @@ public class Pago {
     @Column(name = "id_servicio", nullable = false, updatable = false)
     private Integer idServicio;
 
+    @Column(name = "tipo_front", nullable = false, updatable = false)
+    private Integer tipoFront;
+
     @Column(name = "monto", nullable = false, updatable = false, precision = 12, scale = 2)
     private BigDecimal monto;
+
+    @Column(name = "comision", nullable = false, updatable = false, precision = 12, scale = 2)
+    private BigDecimal comision;
 
     @Column(name = "intentos_conciliacion", nullable = false)
     private short intentosConciliacion;
@@ -96,14 +104,16 @@ public class Pago {
 
     @Builder
     private static Pago crear(Integer clienteId, Integer cuentaId, Integer idProducto, Integer idServicio,
-                              BigDecimal monto, String claveIdempotencia, String upc, String horaLocal,
-                              String telefono, String referencia) {
+                              Integer tipoFront, BigDecimal monto, BigDecimal comision, String claveIdempotencia,
+                              String upc, String horaLocal, String telefono, String referencia) {
         Pago pago = new Pago();
         pago.clienteId = clienteId;
         pago.cuentaId = cuentaId;
         pago.idProducto = idProducto;
         pago.idServicio = idServicio;
+        pago.tipoFront = tipoFront;
         pago.monto = monto.setScale(2, RoundingMode.UNNECESSARY);
+        pago.comision = (comision == null ? BigDecimal.ZERO : comision).setScale(2, RoundingMode.HALF_UP);
         pago.claveIdempotencia = claveIdempotencia;
         pago.upc = upc;
         pago.horaLocal = horaLocal;
@@ -111,6 +121,11 @@ public class Pago {
         pago.referencia = referencia;
         pago.estatus = EstatusPago.PENDIENTE;
         return pago;
+    }
+
+    /** Lo que se retuvo de la cuenta: el monto más la comisión de los pagos de servicio. */
+    public BigDecimal total() {
+        return monto.add(comision);
     }
 
     /** Mismos datos de negocio: un reintento con la misma clave de idempotencia es legítimo. */
@@ -121,6 +136,11 @@ public class Pago {
                 && monto.compareTo(montoSolicitud) == 0
                 && Objects.equals(telefono, telefonoSolicitud)
                 && Objects.equals(referencia, referenciaSolicitud);
+    }
+
+    /** montoPago solo viaja en pagos de servicio; en recargas el monto lo fija el producto. */
+    public BigDecimal montoPagoParaEnvio() {
+        return tipoFront == FRONT_PAGO_SERVICIO ? monto : null;
     }
 
     public void aplicar(String codigo, String mensaje, String numAutorizacion, String idTx) {
@@ -146,6 +166,11 @@ public class Pago {
         exigirNoFinal();
         intentosConciliacion++;
         estatus = intentosConciliacion >= maxIntentos ? EstatusPago.REVISION_MANUAL : EstatusPago.EN_CONCILIACION;
+    }
+
+    public void marcarRevisionManual() {
+        exigirNoFinal();
+        estatus = EstatusPago.REVISION_MANUAL;
     }
 
     private void registrarRespuesta(String codigo, String mensaje) {

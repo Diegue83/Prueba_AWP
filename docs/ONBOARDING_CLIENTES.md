@@ -214,7 +214,7 @@ autenticado. Ejemplo:
 |---|---|---|
 | 400 | `ERROR_VALIDACION` | Cualquier dato inválido, campo desconocido o JSON mal formado |
 | 401 | `CONTRASENA_INCORRECTA` | Login: contraseña errónea |
-| 401 | `NO_AUTENTICADO` | Falta un token Bearer válido o expiró |
+| 401 | `NO_AUTENTICADO` | Falta el token de sesión (JWT de POST /login) o expiró |
 | 403 | `ACCESO_DENEGADO` | El token es válido, pero el recurso pertenece a otro cliente |
 | 404 | `CORREO_NO_ENCONTRADO` | Login: correo no encontrado |
 | 404 | `CLIENTE_NO_ENCONTRADO` / `CUENTA_NO_ENCONTRADA` | Consulta sin resultado |

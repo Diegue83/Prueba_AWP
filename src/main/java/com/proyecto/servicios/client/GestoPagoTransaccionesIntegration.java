@@ -30,15 +30,18 @@ public class GestoPagoTransaccionesIntegration {
     private final GestoPagoCifrador cifrador;
     private final GestoPagoTxXmlParser parser;
     private final ObjectMapper objectMapper;
+    private final GestoPagoBitacoraService bitacora;
 
     public GestoPagoTransaccionesIntegration(GestoPagoTransaccionesClient client,
                                              GestoPagoCifrador cifrador,
                                              GestoPagoTxXmlParser parser,
-                                             ObjectMapper objectMapper) {
+                                             ObjectMapper objectMapper,
+                                             GestoPagoBitacoraService bitacora) {
         this.client = client;
         this.cifrador = cifrador;
         this.parser = parser;
         this.objectMapper = objectMapper;
+        this.bitacora = bitacora;
     }
 
     public GestoPagoTxResultado enviar(GestoPagoTxPayload payload, String token) {
@@ -51,19 +54,25 @@ public class GestoPagoTransaccionesIntegration {
 
     private GestoPagoTxResultado invocar(String operacion, GestoPagoTxPayload payload, String token,
                                          BiFunction<String, Map<String, ?>, String> llamada) {
+        String peticion = json(payload);
         Map<String, String> formulario = Map.of(
                 "random", String.valueOf(System.currentTimeMillis()),
-                "signed", cifrador.cifrar(json(payload)));
+                "signed", cifrador.cifrar(peticion));
 
         log.info("Inicio de invocación a GestoPago {} upc={}", operacion, payload.upc());
         long inicio = System.currentTimeMillis();
         try {
-            GestoPagoTxResultado resultado = parser.interpretar(llamada.apply(BEARER + token, formulario));
+            String respuesta = llamada.apply(BEARER + token, formulario);
+            long duracion = System.currentTimeMillis() - inicio;
+            bitacora.registrar(operacion, payload.upc(), peticion, HttpStatus.OK.value(), respuesta, duracion);
+            GestoPagoTxResultado resultado = parser.interpretar(respuesta);
             log.info("Fin de invocación a GestoPago {} upc={}: {} código={} en {} ms",
-                    operacion, payload.upc(), resultado.tipo(), resultado.codigo(), System.currentTimeMillis() - inicio);
+                    operacion, payload.upc(), resultado.tipo(), resultado.codigo(), duracion);
             return resultado;
         } catch (FeignException e) {
             long duracion = System.currentTimeMillis() - inicio;
+            bitacora.registrar(operacion, payload.upc(), peticion, e.status() < 0 ? null : e.status(),
+                    e.status() < 0 ? e.getClass().getSimpleName() : e.contentUTF8(), duracion);
             if (e.status() == HttpStatus.UNAUTHORIZED.value() || e.status() == HttpStatus.FORBIDDEN.value()) {
                 log.warn("Fin de invocación a GestoPago {} upc={}: token rechazado (HTTP {}) en {} ms",
                         operacion, payload.upc(), e.status(), duracion);

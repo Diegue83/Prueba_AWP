@@ -22,7 +22,7 @@ import java.util.Set;
 @Setter
 public class PagosProperties {
 
-    /** Límites para productos de monto abierto (precio 0 en el catálogo). */
+    /** Límites del monto en pagos de servicio, donde lo define el recibo y no el catálogo. */
     @NotNull
     @DecimalMin("0.01")
     private BigDecimal montoMinimo = new BigDecimal("1.00");
@@ -31,9 +31,12 @@ public class PagosProperties {
     @DecimalMin("0.01")
     private BigDecimal montoMaximo = new BigDecimal("10000.00");
 
-    /** 1 recargas, 2 y 4 pagos de servicio, 5 venta por referencia. 30/40 son envíos de dinero y depósitos. */
+    /**
+     * Solo 1 (recargas) y 2 (pagos de servicio) son ventas con sendTx. 4 y 5 son consultas de
+     * referencia; 30, 31 y 40 son operaciones de efectivo y envío de dinero.
+     */
     @NotEmpty
-    private Set<Integer> tiposFrontPermitidos = Set.of(1, 2, 4, 5);
+    private Set<Integer> tiposFrontPermitidos = Set.of(1, 2);
 
     @NotBlank
     private String zonaHoraria = "America/Mexico_City";

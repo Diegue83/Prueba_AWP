@@ -104,7 +104,21 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'externo'
+    }
+}
+
+// Pruebas contra los servicios reales (GestoPago) con las credenciales del .env local
+tasks.register('testExterno', Test) {
+    description = 'Ejecuta las pruebas que llaman a servicios externos reales'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'externo'
+    }
+    outputs.upToDateWhen { false }
 }
 
 springBoot {

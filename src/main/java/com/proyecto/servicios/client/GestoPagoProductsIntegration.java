@@ -12,9 +12,11 @@ public class GestoPagoProductsIntegration {
     private static final String BEARER = "Bearer ";
 
     private final GestoPagoProductsClient productsClient;
+    private final GestoPagoBitacoraService bitacora;
 
-    public GestoPagoProductsIntegration(GestoPagoProductsClient productsClient) {
+    public GestoPagoProductsIntegration(GestoPagoProductsClient productsClient, GestoPagoBitacoraService bitacora) {
         this.productsClient = productsClient;
+        this.bitacora = bitacora;
     }
 
     public String consultarCatalogoXml(String token) {
@@ -22,10 +24,13 @@ public class GestoPagoProductsIntegration {
         long inicio = System.currentTimeMillis();
         try {
             String xml = productsClient.getProductList(BEARER + token);
+            bitacora.registrar(OPERACION, null, null, 200, xml, System.currentTimeMillis() - inicio);
             log.info("Fin de invocación a GestoPago {}: exitosa en {} ms ({} caracteres)",
                     OPERACION, System.currentTimeMillis() - inicio, xml == null ? 0 : xml.length());
             return xml;
         } catch (FeignException e) {
+            bitacora.registrar(OPERACION, null, null, e.status() < 0 ? null : e.status(),
+                    e.status() < 0 ? e.getClass().getSimpleName() : e.contentUTF8(), System.currentTimeMillis() - inicio);
             log.error("Fin de invocación a GestoPago {}: falló en {} ms con HTTP {} ({})",
                     OPERACION, System.currentTimeMillis() - inicio, e.status(), e.getClass().getSimpleName());
             throw GestoPagoErrores.traducir(e, OPERACION);

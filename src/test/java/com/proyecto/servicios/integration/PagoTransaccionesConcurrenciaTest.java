@@ -4,7 +4,7 @@ import com.proyecto.servicios.entity.pagos.Pago;
 import com.proyecto.servicios.enums.EstatusPago;
 import com.proyecto.servicios.exception.SaldoInsuficienteException;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
-import com.proyecto.servicios.model.pagos.PagoRequest;
+import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoRepository;
 import com.proyecto.servicios.service.Impl.PagoTransacciones;
@@ -48,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PagoTransaccionesConcurrenciaTest {
 
     private static final int HILOS = 12;
+    private static final String CUENTA = "1000000001";
 
     @Autowired
     private PagoTransacciones transacciones;
@@ -82,7 +83,7 @@ class PagoTransaccionesConcurrenciaTest {
         for (int i = 0; i < HILOS; i++) {
             String clave = "clave-concurrente-" + i;
             String upc = String.format("UPC%012d", i);
-            tareas.add(() -> transacciones.registrarYRetener(1, solicitud(), clave, upc, "20261030101500"));
+            tareas.add(() -> transacciones.registrarYRetener(1, CUENTA, recarga(), clave, upc, "20261030101500"));
         }
 
         List<Object> resultados = ejecutarALaVez(tareas);
@@ -100,7 +101,7 @@ class PagoTransaccionesConcurrenciaTest {
         List<Callable<Object>> tareas = new ArrayList<>();
         for (int i = 0; i < HILOS; i++) {
             String upc = String.format("UPC%012d", i);
-            tareas.add(() -> transacciones.registrarYRetener(1, solicitud(), "misma-clave-0001", upc, "20261030101500"));
+            tareas.add(() -> transacciones.registrarYRetener(1, CUENTA, recarga(), "misma-clave-0001", upc, "20261030101500"));
         }
 
         List<Object> resultados = ejecutarALaVez(tareas);
@@ -113,7 +114,7 @@ class PagoTransaccionesConcurrenciaTest {
 
     @Test
     void elRechazoReembolsaUnaSolaVezAunqueLleguenDosResultadosALaVez() throws Exception {
-        Pago pago = transacciones.registrarYRetener(1, solicitud(), "rechazo-doble-01", "UPC000000000099", "20261030101500");
+        Pago pago = transacciones.registrarYRetener(1, CUENTA, recarga(), "rechazo-doble-01", "UPC000000000099", "20261030101500");
         GestoPagoTxResultado rechazo = new GestoPagoTxResultado(GestoPagoTxResultado.Tipo.RECHAZADO, "06", "dup", null, null);
         List<Callable<Object>> tareas = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
@@ -128,7 +129,7 @@ class PagoTransaccionesConcurrenciaTest {
 
     @Test
     void unPagoAplicadoYaNoSePuedeReembolsar() {
-        Pago pago = transacciones.registrarYRetener(1, solicitud(), "aplicado-0001", "UPC000000000098", "20261030101500");
+        Pago pago = transacciones.registrarYRetener(1, CUENTA, recarga(), "aplicado-0001", "UPC000000000098", "20261030101500");
         transacciones.aplicar(pago.getId(), new GestoPagoTxResultado(GestoPagoTxResultado.Tipo.EXITOSO, "01", "ok", "9001", "55"));
 
         transacciones.rechazarYReembolsar(pago.getId(),
@@ -138,6 +139,21 @@ class PagoTransaccionesConcurrenciaTest {
         Pago guardado = pagoRepository.findById(pago.getId()).orElseThrow();
         assertThat(guardado.getEstatus()).isEqualTo(EstatusPago.APLICADO);
         assertThat(guardado.getNumAutorizacion()).isEqualTo("9001");
+    }
+
+    @Test
+    void unPagoDeServicioRetieneMontoMasComisionYAlRechazarseDevuelveAmbos() {
+        PagoValidado servicio = new PagoValidado(205, 76, 2, new BigDecimal("150.00"), new BigDecimal("10.00"),
+                "1111111111", "25720381");
+
+        Pago pago = transacciones.registrarYRetener(1, CUENTA, servicio, "servicio-0001", "UPC000000000097",
+                "20261030101500");
+
+        assertThat(saldo()).isEqualByComparingTo("340.00");
+        assertThat(pago.total()).isEqualByComparingTo("160.00");
+        transacciones.rechazarYReembolsar(pago.getId(),
+                new GestoPagoTxResultado(GestoPagoTxResultado.Tipo.RECHAZADO, "02", "Saldo Insuficiente", null, null));
+        assertThat(saldo()).isEqualByComparingTo("500.00");
     }
 
     private List<Object> ejecutarALaVez(List<Callable<Object>> tareas) throws Exception {
@@ -170,14 +186,8 @@ class PagoTransaccionesConcurrenciaTest {
         return cuentaRepository.consultarSaldo("1000000001").orElseThrow();
     }
 
-    private PagoRequest solicitud() {
-        PagoRequest request = new PagoRequest();
-        request.setNumeroCuenta("1000000001");
-        request.setIdServicio(2284);
-        request.setIdProducto(14302);
-        request.setMonto(new BigDecimal("100.00"));
-        request.setTelefono("5512345678");
-        return request;
+    private PagoValidado recarga() {
+        return new PagoValidado(14302, 2284, 1, new BigDecimal("100.00"), BigDecimal.ZERO, "5512345678", null);
     }
 
     @Configuration

@@ -10,7 +10,7 @@ import com.proyecto.servicios.exception.CuentaNoEncontradaException;
 import com.proyecto.servicios.exception.PagoNoEncontradoException;
 import com.proyecto.servicios.exception.SaldoInsuficienteException;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
-import com.proyecto.servicios.model.pagos.PagoRequest;
+import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -35,14 +35,14 @@ public class PagoTransacciones {
     }
 
     /**
-     * Bloquea la cuenta, valida titular, estatus y saldo, y descuenta el monto en la misma
-     * transacción en la que se crea el pago: o pasan las dos cosas o ninguna.
+     * Bloquea la cuenta, valida titular, estatus y saldo, y descuenta el total (monto más
+     * comisión) en la misma transacción en la que se crea el pago: o pasan las dos cosas o ninguna.
      */
     @Transactional
-    public Pago registrarYRetener(Integer clienteId, PagoRequest request, String claveIdempotencia,
-                                  String upc, String horaLocal) {
-        Cuenta cuenta = cuentaRepository.bloquearPorNumero(request.getNumeroCuenta())
-                .orElseThrow(() -> new CuentaNoEncontradaException(request.getNumeroCuenta()));
+    public Pago registrarYRetener(Integer clienteId, String numeroCuenta, PagoValidado validado,
+                                  String claveIdempotencia, String upc, String horaLocal) {
+        Cuenta cuenta = cuentaRepository.bloquearPorNumero(numeroCuenta)
+                .orElseThrow(() -> new CuentaNoEncontradaException(numeroCuenta));
         if (!cuenta.getCliente().getId().equals(clienteId)) {
             throw new AccesoDenegadoException();
         }
@@ -52,22 +52,24 @@ public class PagoTransacciones {
         if (!cuenta.estaActiva()) {
             throw new CuentaInactivaException();
         }
-        if (!cuenta.tieneSaldoPara(request.getMonto())) {
+        if (!cuenta.tieneSaldoPara(validado.total())) {
             throw new SaldoInsuficienteException();
         }
-        cuenta.retener(request.getMonto());
+        cuenta.retener(validado.total());
 
         Pago pago = Pago.builder()
                 .clienteId(clienteId)
                 .cuentaId(cuenta.getId())
-                .idProducto(request.getIdProducto())
-                .idServicio(request.getIdServicio())
-                .monto(request.getMonto())
+                .idProducto(validado.idProducto())
+                .idServicio(validado.idServicio())
+                .tipoFront(validado.tipoFront())
+                .monto(validado.monto())
+                .comision(validado.comision())
                 .claveIdempotencia(claveIdempotencia)
                 .upc(upc)
                 .horaLocal(horaLocal)
-                .telefono(request.getTelefono())
-                .referencia(request.getReferencia())
+                .telefono(validado.telefono())
+                .referencia(validado.referencia())
                 .build();
         return pagoRepository.saveAndFlush(pago);
     }
@@ -91,7 +93,7 @@ public class PagoTransacciones {
         }
         Cuenta cuenta = cuentaRepository.bloquearPorId(pago.getCuentaId())
                 .orElseThrow(() -> new IllegalStateException("La cuenta del pago " + pagoId + " ya no existe"));
-        cuenta.reembolsar(pago.getMonto());
+        cuenta.reembolsar(pago.total());
         pago.rechazar(resultado.codigo(), resultado.mensaje());
         log.info("Pago rechazado y reembolsado idPago={} upc={} código={}",
                 pago.getId(), pago.getUpc(), resultado.codigo());
@@ -118,6 +120,17 @@ public class PagoTransacciones {
                 log.error("Pago requiere revisión manual idPago={} upc={}: se agotaron {} intentos de confirmTx",
                         pago.getId(), pago.getUpc(), maxIntentos);
             }
+        }
+        return pago;
+    }
+
+    @Transactional
+    public Pago marcarRevisionManual(Long pagoId) {
+        Pago pago = bloquear(pagoId);
+        if (!pago.getEstatus().esFinal() && pago.getEstatus() != EstatusPago.REVISION_MANUAL) {
+            pago.marcarRevisionManual();
+            log.error("Pago requiere revisión manual idPago={} upc={}: venció el plazo de 24 h de confirmTx",
+                    pago.getId(), pago.getUpc());
         }
         return pago;
     }

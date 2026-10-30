@@ -18,6 +18,7 @@ import com.proyecto.servicios.model.gestopago.GestoPagoTxPayload;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
 import com.proyecto.servicios.model.pagos.PagoRequest;
 import com.proyecto.servicios.model.pagos.PagoResponse;
+import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
@@ -30,6 +31,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -102,20 +104,20 @@ public class PagoServiceImpl implements PagoService {
                     List.of("Idempotency-Key: entre 8 y 64 caracteres, solo letras, números, guion y guion bajo"));
         }
         var previo = pagoRepository.findByClienteIdAndClaveIdempotencia(clienteId, claveIdempotencia);
+        PagoValidado validado = validador.validar(request);
         if (previo.isPresent()) {
-            return repetido(previo.get(), request);
+            return repetido(previo.get(), request.getNumeroCuenta(), validado);
         }
-
-        validador.validar(request);
         cifrador.validarConfiguracion();
         segundoFactorService.verificar(clienteId, request.getCodigo2fa());
 
         Pago pago;
         try {
-            pago = transacciones.registrarYRetener(clienteId, request, claveIdempotencia, generarUpc(), horaLocal());
+            pago = transacciones.registrarYRetener(clienteId, request.getNumeroCuenta(), validado,
+                    claveIdempotencia, generarUpc(), horaLocal());
         } catch (DataIntegrityViolationException e) {
             return pagoRepository.findByClienteIdAndClaveIdempotencia(clienteId, claveIdempotencia)
-                    .map(existente -> repetido(existente, request))
+                    .map(existente -> repetido(existente, request.getNumeroCuenta(), validado))
                     .orElseThrow(() -> e);
         } catch (PessimisticLockingFailureException e) {
             throw new OperacionEnCursoException();
@@ -157,6 +159,7 @@ public class PagoServiceImpl implements PagoService {
 
     private Pago procesar(Pago pago) {
         GestoPagoTxPayload payload = payload(pago);
+        long inicioEnvio = System.nanoTime();
         GestoPagoTxResultado envio;
         try {
             envio = conToken(token -> integracion.enviar(payload, token));
@@ -173,6 +176,12 @@ public class PagoServiceImpl implements PagoService {
             return transacciones.rechazarYReembolsar(pago.getId(), envio);
         }
 
+        long segundosDesdeEnvio = Duration.ofNanos(System.nanoTime() - inicioEnvio).toSeconds();
+        if (segundosDesdeEnvio < transaccionesProperties.getEsperaConfirmacionSegundos()) {
+            log.warn("sendTx sin resultado concluyente para upc={} (código {}); confirmTx queda para la conciliación",
+                    pago.getUpc(), envio.codigo());
+            return transacciones.enviarAConciliacion(pago.getId());
+        }
         log.warn("sendTx sin resultado concluyente para upc={}; se consulta confirmTx", pago.getUpc());
         GestoPagoTxResultado confirmacion = confirmar(payload);
         if (confirmacion.esExitoso()) {
@@ -187,6 +196,11 @@ public class PagoServiceImpl implements PagoService {
     private void conciliar(Long idPago) {
         try {
             Pago pago = pagoRepository.findById(idPago).orElseThrow(() -> new PagoNoEncontradoException(idPago));
+            if (pago.getFechaCreacion().isBefore(LocalDateTime.now()
+                    .minusHours(transaccionesProperties.getVigenciaConfirmacionHoras()))) {
+                transacciones.marcarRevisionManual(idPago);
+                return;
+            }
             GestoPagoTxResultado confirmacion = confirmar(payload(pago));
             if (confirmacion.esExitoso()) {
                 transacciones.aplicar(idPago, confirmacion);
@@ -209,8 +223,8 @@ public class PagoServiceImpl implements PagoService {
     }
 
     /**
-     * Un "no" de confirmTx solo libera el dinero cuando el código está declarado como
-     * "operación no aplicada". Cualquier otro código deja el pago en conciliación.
+     * Un "no" de confirmTx solo libera el dinero con un código que garantiza que la operación
+     * no se aplicó (70). Cualquier otro código deja el pago en conciliación.
      */
     private boolean confirmacionDescartaElCobro(GestoPagoTxResultado confirmacion) {
         return confirmacion.esRechazado()
@@ -226,10 +240,10 @@ public class PagoServiceImpl implements PagoService {
         }
     }
 
-    private PagoResponse repetido(Pago pago, PagoRequest request) {
-        Integer cuentaId = cuentaRepository.buscarPorNumero(request.getNumeroCuenta()).map(Cuenta::getId).orElse(null);
-        if (!pago.mismaSolicitud(cuentaId, request.getIdProducto(), request.getMonto(),
-                request.getTelefono(), request.getReferencia())) {
+    private PagoResponse repetido(Pago pago, String numeroCuenta, PagoValidado validado) {
+        Integer cuentaId = cuentaRepository.buscarPorNumero(numeroCuenta).map(Cuenta::getId).orElse(null);
+        if (!pago.mismaSolicitud(cuentaId, validado.idProducto(), validado.monto(),
+                validado.telefono(), validado.referencia())) {
             throw new IdempotenciaConflictoException();
         }
         log.info("Solicitud repetida con la misma Idempotency-Key; se devuelve el pago idPago={}", pago.getId());
@@ -238,13 +252,13 @@ public class PagoServiceImpl implements PagoService {
 
     private GestoPagoTxPayload payload(Pago pago) {
         return new GestoPagoTxPayload(pago.getIdServicio(), pago.getIdProducto(), pago.getReferencia(),
-                pago.getMonto(), pago.getTelefono(), pago.getHoraLocal(), pago.getUpc(),
+                pago.montoPagoParaEnvio(), pago.getTelefono(), pago.getHoraLocal(), pago.getUpc(),
                 transaccionesProperties.getUnidad());
     }
 
     private PagoResponse aRespuesta(Pago pago) {
         return new PagoResponse(pago.getId(), pago.getEstatus(), pago.getIdProducto(), pago.getMonto(),
-                pago.getNumAutorizacion(), pago.getCodigoRespuesta(), mensaje(pago.getEstatus()),
+                pago.getComision(), pago.total(), pago.getNumAutorizacion(), pago.getCodigoRespuesta(), mensaje(pago.getEstatus()),
                 pago.getFechaActualizacion());
     }
 

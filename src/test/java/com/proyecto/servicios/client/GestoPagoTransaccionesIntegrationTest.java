@@ -33,6 +33,12 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class GestoPagoTransaccionesIntegrationTest {
 
@@ -41,6 +47,7 @@ class GestoPagoTransaccionesIntegrationTest {
 
     private final GestoPagoTransaccionesProperties properties = new GestoPagoTransaccionesProperties();
     private final GestoPagoCifrador cifrador = new GestoPagoCifrador(properties);
+    private final GestoPagoBitacoraService bitacora = mock(GestoPagoBitacoraService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicReference<String> rutaRecibida = new AtomicReference<>();
     private final AtomicReference<String> authorizationRecibido = new AtomicReference<>();
@@ -98,6 +105,8 @@ class GestoPagoTransaccionesIntegrationTest {
         assertThat(json.get("horaLocal").asText()).isEqualTo("20261030101500");
         assertThat(json.get("upc").asText()).isEqualTo("ABC123DEF456GHI");
         assertThat(json.has("referencia")).isFalse();
+        verify(bitacora).registrar(eq("sendTx"), eq("ABC123DEF456GHI"), contains("\"telefono\":\"5512345678\""),
+                eq(200), contains("<CODIGO>01</CODIGO>"), anyLong());
     }
 
     @Test
@@ -114,6 +123,8 @@ class GestoPagoTransaccionesIntegrationTest {
         demoraMs = 1_500;
 
         assertThat(integracion(url()).enviar(payload(), "token").tipo()).isEqualTo(Tipo.INDETERMINADO);
+        verify(bitacora).registrar(eq("sendTx"), eq("ABC123DEF456GHI"), contains("ABC123DEF456GHI"),
+                isNull(), eq("RetryableException"), anyLong());
     }
 
     @Test
@@ -172,7 +183,7 @@ class GestoPagoTransaccionesIntegrationTest {
                 .options(new Request.Options(500, TimeUnit.MILLISECONDS, 1_000, TimeUnit.MILLISECONDS, true))
                 .target(GestoPagoTransaccionesClient.class, url);
         return new GestoPagoTransaccionesIntegration(client, cifrador,
-                new GestoPagoTxXmlParser(properties), objectMapper);
+                new GestoPagoTxXmlParser(properties), objectMapper, bitacora);
     }
 
     private GestoPagoTxPayload payload() {

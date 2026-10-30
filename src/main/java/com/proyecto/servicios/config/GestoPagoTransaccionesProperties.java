@@ -25,15 +25,17 @@ public class GestoPagoTransaccionesProperties {
     private String unidad = "";
 
     /**
-     * Códigos con los que el proveedor no confirma ni descarta la operación
-     * (por ejemplo 03, "el carrier no responde"): se consultan con confirmTx.
+     * Códigos de sendTx que no confirman ni descartan la operación: 82 (tiempo de espera
+     * alcanzado) y 03 (el carrier no responde). Se resuelven con confirmTx.
      */
-    private Set<String> codigosIndeterminados = Set.of("03");
+    private Set<String> codigosIndeterminados = Set.of("03", "82");
 
-    /**
-     * Códigos de confirmTx que garantizan que la operación NO se aplicó y permiten reembolsar.
-     * Vacío por defecto: mientras el proveedor no documente esos códigos, un "no" de
-     * confirmTx deja el pago en conciliación en lugar de devolver dinero que pudo cobrarse.
-     */
-    private Set<String> codigosNoAplicada = Set.of();
+    /** Códigos de confirmTx que garantizan que la operación NO se aplicó: 70 "La transaccion no fue aplicada". */
+    private Set<String> codigosNoAplicada = Set.of("70");
+
+    /** La especificación prohíbe llamar confirmTx antes de 62 s desde el sendTx. */
+    private long esperaConfirmacionSegundos = 62;
+
+    /** confirmTx solo responde durante 24 h; después el pago pasa a revisión manual. */
+    private long vigenciaConfirmacionHoras = 24;
 }

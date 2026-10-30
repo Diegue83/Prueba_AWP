@@ -18,6 +18,7 @@ import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado.Tipo;
 import com.proyecto.servicios.model.pagos.PagoRequest;
 import com.proyecto.servicios.model.pagos.PagoResponse;
+import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoRepository;
 import com.proyecto.servicios.service.Impl.PagoServiceImpl;
@@ -37,7 +38,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,6 +50,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -86,9 +88,16 @@ class PagoServiceImplTest {
     void preparar() {
         service = new PagoServiceImpl(validador, segundoFactorService, transacciones, pagoRepository,
                 cuentaRepository, integracion, cifrador, tokenService, new PagosProperties(), transaccionesProperties);
+        transaccionesProperties.setEsperaConfirmacionSegundos(0);
         pago = pago(EstatusPago.PENDIENTE);
+        when(validador.validar(any())).thenAnswer(invocacion -> {
+            PagoRequest request = invocacion.getArgument(0);
+            return new PagoValidado(request.getIdProducto(), request.getIdServicio(), 1, request.getMonto(),
+                    BigDecimal.ZERO, request.getTelefono(), request.getReferencia());
+        });
         when(pagoRepository.findByClienteIdAndClaveIdempotencia(CLIENTE, CLAVE)).thenReturn(Optional.empty());
-        when(transacciones.registrarYRetener(eq(CLIENTE), any(), eq(CLAVE), anyString(), anyString())).thenReturn(pago);
+        when(transacciones.registrarYRetener(eq(CLIENTE), anyString(), any(), eq(CLAVE), anyString(), anyString()))
+                .thenReturn(pago);
         when(tokenService.obtenerTokenVigente()).thenReturn(token("token-guardado"));
         when(transacciones.aplicar(eq(ID_PAGO), any())).thenReturn(pago(EstatusPago.APLICADO));
         when(transacciones.rechazarYReembolsar(eq(ID_PAGO), any())).thenReturn(pago(EstatusPago.RECHAZADO));
@@ -106,7 +115,7 @@ class PagoServiceImplTest {
         orden.verify(validador).validar(any());
         orden.verify(cifrador).validarConfiguracion();
         orden.verify(segundoFactorService).verificar(CLIENTE, "123456");
-        orden.verify(transacciones).registrarYRetener(eq(CLIENTE), any(), eq(CLAVE), anyString(), anyString());
+        orden.verify(transacciones).registrarYRetener(eq(CLIENTE), eq("1000000001"), any(), eq(CLAVE), anyString(), anyString());
         orden.verify(transacciones).aplicar(eq(ID_PAGO), any());
         verify(integracion, never()).confirmar(any(), anyString());
     }
@@ -151,15 +160,63 @@ class PagoServiceImplTest {
     }
 
     @Test
-    void unNoDeConfirmTxSoloReembolsaConCodigosDeclaradosComoNoAplicada() {
+    void soloElCodigo70DeConfirmTxPermiteDevolverElDinero() {
         when(integracion.enviar(any(), anyString())).thenReturn(GestoPagoTxResultado.indeterminado("timeout"));
-        when(integracion.confirmar(any(), anyString())).thenReturn(resultado(Tipo.RECHAZADO, "51"));
+        when(integracion.confirmar(any(), anyString()))
+                .thenReturn(resultado(Tipo.RECHAZADO, "51"), resultado(Tipo.RECHAZADO, "70"));
 
         assertThat(service.pagar(CLIENTE, CLAVE, solicitud()).estatus()).isEqualTo(EstatusPago.EN_CONCILIACION);
         verify(transacciones, never()).rechazarYReembolsar(any(), any());
 
-        transaccionesProperties.setCodigosNoAplicada(Set.of("51"));
         assertThat(service.pagar(CLIENTE, CLAVE, solicitud()).estatus()).isEqualTo(EstatusPago.RECHAZADO);
+    }
+
+    @Test
+    void noConsultaConfirmTxAntesDe62SegundosDelEnvio() {
+        transaccionesProperties.setEsperaConfirmacionSegundos(62);
+        when(integracion.enviar(any(), anyString())).thenReturn(resultado(Tipo.INDETERMINADO, "82"));
+
+        assertThat(service.pagar(CLIENTE, CLAVE, solicitud()).estatus()).isEqualTo(EstatusPago.EN_CONCILIACION);
+        verify(integracion, never()).confirmar(any(), anyString());
+        verify(transacciones, never()).rechazarYReembolsar(any(), any());
+    }
+
+    @Test
+    void laConciliacionNoConsultaConfirmTxDespuesDe24Horas() {
+        Pago viejo = pago(EstatusPago.EN_CONCILIACION);
+        ReflectionTestUtils.setField(viejo, "fechaCreacion", LocalDateTime.now().minusHours(25));
+        when(pagoRepository.buscarPorConciliar(any(), any(), any())).thenReturn(List.of(ID_PAGO));
+        when(pagoRepository.findById(ID_PAGO)).thenReturn(Optional.of(viejo));
+
+        service.conciliarPendientes();
+
+        verify(transacciones).marcarRevisionManual(ID_PAGO);
+        verify(integracion, never()).confirmar(any(), anyString());
+    }
+
+    @Test
+    void enPagosDeServicioEnviaReferenciaYMontoPagoYEnRecargasNo() {
+        Pago servicio = Pago.builder().clienteId(CLIENTE).cuentaId(5).idProducto(205).idServicio(76).tipoFront(2)
+                .monto(new BigDecimal("601.99")).comision(new BigDecimal("10.00")).claveIdempotencia(CLAVE)
+                .upc("UPC000000000002").horaLocal("20261030101500").telefono("1111111111").referencia("25720381")
+                .build();
+        ReflectionTestUtils.setField(servicio, "id", ID_PAGO);
+        when(transacciones.registrarYRetener(eq(CLIENTE), anyString(), any(), eq(CLAVE), anyString(), anyString()))
+                .thenReturn(servicio, pago);
+        when(integracion.enviar(any(), anyString())).thenReturn(resultado(Tipo.EXITOSO, "01"));
+
+        service.pagar(CLIENTE, CLAVE, solicitud());
+        service.pagar(CLIENTE, CLAVE, solicitud());
+
+        ArgumentCaptor<GestoPagoTxPayload> enviados = ArgumentCaptor.forClass(GestoPagoTxPayload.class);
+        verify(integracion, times(2)).enviar(enviados.capture(), anyString());
+        GestoPagoTxPayload pagoServicio = enviados.getAllValues().get(0);
+        GestoPagoTxPayload recarga = enviados.getAllValues().get(1);
+        assertThat(pagoServicio.montoPago()).isEqualByComparingTo("601.99");
+        assertThat(pagoServicio.referencia()).isEqualTo("25720381");
+        assertThat(pagoServicio.telefono()).isEqualTo("1111111111");
+        assertThat(recarga.montoPago()).isNull();
+        assertThat(recarga.referencia()).isNull();
     }
 
     @Test
@@ -209,7 +266,7 @@ class PagoServiceImplTest {
 
     @Test
     void siDosPeticionesConLaMismaClaveLleganJuntasLaSegundaRecibeElPagoDeLaPrimera() {
-        when(transacciones.registrarYRetener(eq(CLIENTE), any(), eq(CLAVE), anyString(), anyString()))
+        when(transacciones.registrarYRetener(eq(CLIENTE), anyString(), any(), eq(CLAVE), anyString(), anyString()))
                 .thenThrow(new DataIntegrityViolationException("uq_pagos_idempotencia"));
         when(pagoRepository.findByClienteIdAndClaveIdempotencia(CLIENTE, CLAVE))
                 .thenReturn(Optional.empty(), Optional.of(pago(EstatusPago.PENDIENTE)));
@@ -274,7 +331,9 @@ class PagoServiceImplTest {
                 .cuentaId(5)
                 .idProducto(14302)
                 .idServicio(2284)
+                .tipoFront(1)
                 .monto(new BigDecimal("100.00"))
+                .comision(BigDecimal.ZERO)
                 .claveIdempotencia(CLAVE)
                 .upc("UPC000000000001")
                 .horaLocal("20261030101500")
@@ -282,6 +341,7 @@ class PagoServiceImplTest {
                 .build();
         ReflectionTestUtils.setField(nuevo, "id", ID_PAGO);
         ReflectionTestUtils.setField(nuevo, "estatus", estatus);
+        ReflectionTestUtils.setField(nuevo, "fechaCreacion", LocalDateTime.now());
         return nuevo;
     }
 

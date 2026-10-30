@@ -35,7 +35,7 @@ public class AutenticacionInterceptor implements HandlerInterceptor {
         }
         String encabezado = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (encabezado == null || !encabezado.startsWith(PREFIJO) || encabezado.length() == PREFIJO.length()) {
-            throw new NoAutenticadoException("Falta el token. Envía el encabezado Authorization: Bearer <token>");
+            throw new NoAutenticadoException("Falta el token de sesión. Inicia sesión en POST /login y envía Authorization: Bearer <token de sesión>");
         }
         Integer clienteId = tokenService.obtenerClienteId(encabezado.substring(PREFIJO.length()).trim());
         request.setAttribute(CLIENTE_AUTENTICADO, clienteId);

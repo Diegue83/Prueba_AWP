@@ -24,7 +24,7 @@ public class GestoPagoProductController {
     @Operation(
             summary = "Consulta el catálogo de productos",
             description = "Devuelve el catálogo desde Redis; si no está en cache lo lee de PostgreSQL. "
-                    + "Requiere el encabezado Authorization: Bearer <token>.")
+                    + "Es público: no requiere token de sesión.")
     @GetMapping
     public ResponseEntity<GenericResponse> consultarProductos() {
         GenericResponse respuesta = new GenericResponse();

@@ -6,6 +6,6 @@ public class GestoPagoAutenticacionException extends GestoPagoIntegracionExcepti
 
     public GestoPagoAutenticacionException(String operacion) {
         super(HttpStatus.BAD_GATEWAY, "ERROR_AUTENTICACION_GESTOPAGO",
-                "GestoPago rechazó las credenciales o el token de la aplicación (" + operacion + ")");
+                "GestoPago rechazó las credenciales del distribuidor o su token de operación (" + operacion + ")");
     }
 }

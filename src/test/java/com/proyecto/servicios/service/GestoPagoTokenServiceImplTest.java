@@ -48,6 +48,7 @@ class GestoPagoTokenServiceImplTest {
         ReflectionTestUtils.setField(service, "idDistribuidor", 83);
         ReflectionTestUtils.setField(service, "codigoDispositivo", "GPS83-TPV-17");
         ReflectionTestUtils.setField(service, "password", "password-de-prueba");
+        ReflectionTestUtils.setField(service, "horasVigencia", 23L);
     }
 
     @Test
@@ -127,5 +128,42 @@ class GestoPagoTokenServiceImplTest {
         assertThatThrownBy(() -> service.solicitarNuevoToken())
                 .isInstanceOf(GestoPagoAutenticacionException.class);
         verify(tokenRepository, never()).save(any());
+    }
+
+    @Test
+    void sinExpiresInReutilizaElTokenDelDiaYNoPideOtro() {
+        GestoPagoToken tokenDelDia = new GestoPagoToken();
+        tokenDelDia.setToken("token-del-dia");
+        tokenDelDia.setFechaActualizacion(LocalDateTime.now().minusHours(5));
+        tokenDelDia.setActivo(true);
+        when(tokenRepository.findByIdDistribuidorAndCodigoDispositivo(83, "GPS83-TPV-17"))
+                .thenReturn(Optional.of(tokenDelDia));
+
+        service.asegurarTokenVigente();
+
+        assertThat(service.obtenerTokenVigente().getToken()).isEqualTo("token-del-dia");
+        verify(authClient, never()).authenticate(any(), any(), any());
+    }
+
+    @Test
+    void sinExpiresInPideTokenNuevoCuandoPasaronLas23Horas() {
+        GestoPagoToken tokenViejo = new GestoPagoToken();
+        tokenViejo.setToken("token-de-ayer");
+        tokenViejo.setFechaActualizacion(LocalDateTime.now().minusHours(24));
+        tokenViejo.setActivo(true);
+        when(tokenRepository.findByIdDistribuidorAndCodigoDispositivo(83, "GPS83-TPV-17"))
+                .thenReturn(Optional.of(tokenViejo));
+        GestoPagoAuthResponse authResponse = new GestoPagoAuthResponse();
+        authResponse.setSuccess(true);
+        authResponse.setToken("token-de-hoy");
+        when(authClient.authenticate(83, "GPS83-TPV-17", "password-de-prueba")).thenReturn(authResponse);
+        doAnswer(invocation -> {
+            GestoPagoToken target = invocation.getArgument(1);
+            target.setToken("token-de-hoy");
+            return null;
+        }).when(tokenMapper).updateEntity(eq(authResponse), eq(tokenViejo));
+        when(tokenRepository.save(tokenViejo)).thenReturn(tokenViejo);
+
+        assertThat(service.obtenerTokenVigente().getToken()).isEqualTo("token-de-hoy");
     }
 }

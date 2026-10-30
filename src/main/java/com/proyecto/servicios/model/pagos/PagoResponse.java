@@ -12,6 +12,8 @@ public record PagoResponse(
         EstatusPago estatus,
         Integer idProducto,
         BigDecimal monto,
+        BigDecimal comision,
+        BigDecimal total,
         String numAutorizacion,
         String codigoProveedor,
         String mensaje,

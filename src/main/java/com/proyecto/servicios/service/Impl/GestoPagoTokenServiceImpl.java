@@ -36,6 +36,10 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     @Value("${gestopago.auth.password}")
     private String password;
 
+    /** La respuesta de authenticate no trae expires_in; se usa la vigencia documentada (24 h) con margen. */
+    @Value("${gestopago.auth.vigencia-horas:23}")
+    private long horasVigencia;
+
     public GestoPagoTokenServiceImpl(GestoPagoAuthClient gestoPagoAuthClient,
                                      GestoPagoTokenRepository tokenRepository,
                                      GestoPagoTokenMapper tokenMapper) {
@@ -44,15 +48,17 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
         this.tokenMapper = tokenMapper;
     }
 
+    /**
+     * PuntoRed entrega tokens válidos por 24 h y no permite pedir uno nuevo en cada petición
+     * ni varias veces al día: aquí solo se revisa cada hora y se renueva cuando ya venció.
+     */
     @Override
-    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 0)
-    public void renovarToken() {
-        log.info("Renovando token GestoPago para distribuidor={}", idDistribuidor);
+    @Scheduled(fixedRateString = "${gestopago.auth.revision-ms:3600000}", initialDelay = 0)
+    public void asegurarTokenVigente() {
         try {
-            autenticarYGuardarToken();
-            log.info("Token GestoPago renovado correctamente");
+            obtenerTokenVigente();
         } catch (Exception e) {
-            log.error("Error al renovar token GestoPago: {}", e.getMessage());
+            log.error("Error al obtener el token GestoPago: {}", e.getMessage());
         }
     }
 
@@ -112,12 +118,13 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
                 || token.getToken().isBlank()) {
             return false;
         }
-        Long expiresIn = token.getExpiresIn();
         LocalDateTime fechaActualizacion = token.getFechaActualizacion();
-        if (expiresIn == null || expiresIn <= 0 || fechaActualizacion == null) {
-            return true;
+        if (fechaActualizacion == null) {
+            return false;
         }
-        return fechaActualizacion.plusSeconds(expiresIn).isAfter(LocalDateTime.now());
+        Long expiresIn = token.getExpiresIn();
+        long segundos = expiresIn != null && expiresIn > 0 ? expiresIn : horasVigencia * 3600L;
+        return fechaActualizacion.plusSeconds(segundos).isAfter(LocalDateTime.now());
     }
 
     @Override

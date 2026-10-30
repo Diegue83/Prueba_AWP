@@ -51,9 +51,9 @@ public class TokenService {
         try {
             return Integer.valueOf(verificador.verify(token).getSubject());
         } catch (TokenExpiredException e) {
-            throw new NoAutenticadoException("La sesión expiró. Inicia sesión de nuevo");
+            throw new NoAutenticadoException("El token de sesión expiró. Inicia sesión de nuevo");
         } catch (JWTVerificationException | NumberFormatException e) {
-            throw new NoAutenticadoException("El token no es válido");
+            throw new NoAutenticadoException("El token de sesión no es válido");
         }
     }
 

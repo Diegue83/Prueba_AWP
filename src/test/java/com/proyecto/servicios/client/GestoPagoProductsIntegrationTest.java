@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 class GestoPagoProductsIntegrationTest {
 
@@ -105,7 +106,7 @@ class GestoPagoProductsIntegrationTest {
                 .contract(new SpringMvcContract())
                 .options(new Request.Options(500, TimeUnit.MILLISECONDS, 500, TimeUnit.MILLISECONDS, true))
                 .target(GestoPagoProductsClient.class, url);
-        return new GestoPagoProductsIntegration(client);
+        return new GestoPagoProductsIntegration(client, mock(GestoPagoBitacoraService.class));
     }
 
     private String urlServidor() {
