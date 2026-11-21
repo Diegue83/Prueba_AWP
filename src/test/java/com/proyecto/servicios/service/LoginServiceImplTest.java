@@ -12,7 +12,7 @@ import com.proyecto.servicios.model.onboarding.LoginRequest;
 import com.proyecto.servicios.model.onboarding.LoginResponse;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.LoginRepository;
-import com.proyecto.servicios.service.Impl.LoginServiceImpl;
+import com.proyecto.servicios.service.impl.LoginServiceImpl;
 import com.proyecto.servicios.security.TokenService;
 import com.proyecto.servicios.validation.ClienteValidador;
 import org.junit.jupiter.api.BeforeEach;

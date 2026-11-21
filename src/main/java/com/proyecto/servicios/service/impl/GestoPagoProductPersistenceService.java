@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.entity.gestopago.GestoPagoProduct;
 import com.proyecto.servicios.mapper.GestoPagoProductMapper;

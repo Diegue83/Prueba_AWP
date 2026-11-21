@@ -4,7 +4,6 @@ import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
 import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 
-import java.util.List;
 
 public interface ClienteService {
 

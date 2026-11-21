@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.config.SegundoFactorProperties;
 import com.proyecto.servicios.entity.onboarding.Cliente;
@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.OptionalLong;
 
 @Service
@@ -95,7 +96,7 @@ public class SegundoFactorServiceImpl implements SegundoFactorService {
     }
 
     private long validarCodigo(SegundoFactor factor, String codigo) {
-        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime ahora = LocalDateTime.now(ZoneId.systemDefault());
         if (factor.estaBloqueado(ahora)) {
             throw new SegundoFactorBloqueadoException();
         }

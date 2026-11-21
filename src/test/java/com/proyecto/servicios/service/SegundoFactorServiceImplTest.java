@@ -10,7 +10,7 @@ import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.SegundoFactorRepository;
 import com.proyecto.servicios.security.CifradoSecretos;
 import com.proyecto.servicios.security.Totp;
-import com.proyecto.servicios.service.Impl.SegundoFactorServiceImpl;
+import com.proyecto.servicios.service.impl.SegundoFactorServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

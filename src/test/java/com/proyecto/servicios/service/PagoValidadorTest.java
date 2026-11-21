@@ -7,7 +7,7 @@ import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.model.pagos.PagoRequest;
 import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.gestopago.GestoPagoProductRepository;
-import com.proyecto.servicios.service.Impl.PagoValidador;
+import com.proyecto.servicios.service.impl.PagoValidador;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;

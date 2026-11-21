@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /** Evidencia de cada intercambio con GestoPago, como exige la especificación de PuntoRed. */
 @Entity
@@ -47,7 +48,7 @@ public class GestoPagoBitacora {
     public static GestoPagoBitacora registrar(String operacion, String upc, String peticion, Integer httpStatus,
                                               String respuesta, long duracionMs) {
         GestoPagoBitacora registro = new GestoPagoBitacora();
-        registro.fecha = LocalDateTime.now();
+        registro.fecha = LocalDateTime.now(ZoneId.systemDefault());
         registro.operacion = operacion;
         registro.upc = upc;
         registro.peticion = peticion;

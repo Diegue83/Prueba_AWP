@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.config.OnboardingProperties;
 import com.proyecto.servicios.entity.onboarding.Cliente;
@@ -31,6 +31,9 @@ import com.proyecto.servicios.security.ControlAcceso;
 @Service
 @Slf4j
 public class ClienteServiceImpl implements ClienteService {
+
+    private static final String MENSAJE_CLIENTE_ENCONTRADO = "Cliente encontrado";
+    private static final String MENSAJE_CONSULTA_CLIENTES = "Consulta de clientes realizada correctamente";
 
     private final ClienteRepository clienteRepository;
     private final CuentaRepository cuentaRepository;
@@ -79,11 +82,7 @@ public class ClienteServiceImpl implements ClienteService {
         // Un solo save: la cascada inserta también el domicilio, la cuenta y el login.
         Cliente guardado = clienteRepository.save(cliente);
         log.info("Cliente registrado id={} con cuenta={}", guardado.getId(), guardado.getCuenta().getNumeroCuenta());
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente registrado correctamente");
-        respuesta.setDatos(clienteMapper.aRespuesta(guardado));
-        return respuesta;
+        return exito("Cliente registrado correctamente", clienteMapper.aRespuesta(guardado));
     }
 
     // ======================== Actualización ========================
@@ -95,7 +94,7 @@ public class ClienteServiceImpl implements ClienteService {
         controlAcceso.verificarPropietario(id);
         String nacionalidad = nacionalidadService.obtenerNombreValido(request.getNacionalidad());
 
-        Cliente cliente = obtener(clienteRepository.buscarPorId(id), "id " + id);
+        Cliente cliente = clienteRepository.buscarPorId(id).orElseThrow(() -> noEncontrado("id " + id));
         if (!cliente.isActivo()) {
             throw new ClienteInactivoException("El cliente " + id + " está dado de baja y no admite cambios");
         }
@@ -111,11 +110,7 @@ public class ClienteServiceImpl implements ClienteService {
         cliente.setNacionalidad(nacionalidad);
         cliente = clienteRepository.saveAndFlush(cliente);
         log.info("Cliente actualizado id={}", id);
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente actualizado correctamente");
-        respuesta.setDatos(clienteMapper.aRespuesta(cliente));
-        return respuesta;
+        return exito("Cliente actualizado correctamente", clienteMapper.aRespuesta(cliente));
     }
 
     // ========================= Baja lógica =========================
@@ -126,18 +121,14 @@ public class ClienteServiceImpl implements ClienteService {
         Integer id = request.getId();
         controlAcceso.verificarPropietario(id);
 
-        Cliente cliente = obtener(clienteRepository.buscarPorId(id), "id " + id);
+        Cliente cliente = clienteRepository.buscarPorId(id).orElseThrow(() -> noEncontrado("id " + id));
         if (!cliente.isActivo()) {
             throw new ClienteInactivoException("El cliente " + id + " ya estaba dado de baja");
         }
         cliente.darDeBaja();
         clienteRepository.save(cliente);
         log.info("Cliente dado de baja id={} (cuenta {} inactivada)", id, cliente.getCuenta().getNumeroCuenta());
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente dado de baja correctamente");
-        respuesta.setDatos(null);
-        return respuesta;
+        return exito("Cliente dado de baja correctamente", null);
     }
 
     // ========================== Consultas ==========================
@@ -148,11 +139,7 @@ public class ClienteServiceImpl implements ClienteService {
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Consulta de clientes realizada correctamente");
-        respuesta.setDatos(clientes);
-        return respuesta;
+        return exito(MENSAJE_CONSULTA_CLIENTES, clientes);
     }
 
     @Override
@@ -180,11 +167,7 @@ public class ClienteServiceImpl implements ClienteService {
                 .stream()
                 .map(clienteMapper::aRespuesta)
                 .toList();
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Consulta de clientes realizada correctamente");
-        respuesta.setDatos(clientes);
-        return respuesta;
+        return exito(MENSAJE_CONSULTA_CLIENTES, clientes);
     }
 
     @Override
@@ -208,11 +191,7 @@ public class ClienteServiceImpl implements ClienteService {
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Consulta de clientes activos realizada correctamente");
-        respuesta.setDatos(clientes);
-        return respuesta;
+        return exito("Consulta de clientes activos realizada correctamente", clientes);
     }
 
     @Override
@@ -224,69 +203,45 @@ public class ClienteServiceImpl implements ClienteService {
                 .map(clienteMapper::aRespuesta)
                 .map(List::of)
                 .orElseGet(List::of);
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Consulta de clientes por fecha realizada correctamente");
-        respuesta.setDatos(clientes);
-        return respuesta;
+        return exito("Consulta de clientes por fecha realizada correctamente", clientes);
     }
 
     @Override
     public GenericResponse consultarPorId(Integer id) {
         validador.validarId(id);
         controlAcceso.verificarPropietario(id);
-        ClienteResponse cliente = clienteMapper.aRespuesta(obtener(clienteRepository.buscarPorId(id), "id " + id));
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente encontrado");
-        respuesta.setDatos(cliente);
-        return respuesta;
+        ClienteResponse cliente = clienteMapper.aRespuesta(clienteRepository.buscarPorId(id).orElseThrow(() -> noEncontrado("id " + id)));
+        return exito(MENSAJE_CLIENTE_ENCONTRADO, cliente);
     }
 
     @Override
     public GenericResponse consultarPorCurp(String curp) {
         validador.validarCurp(curp);
-        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorCurp(curp), "CURP " + curp));
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente encontrado");
-        respuesta.setDatos(cliente);
-        return respuesta;
+        ClienteResponse cliente = responderSiEsPropietario(clienteRepository.buscarPorCurp(curp).orElseThrow(() -> noEncontrado("CURP " + curp)));
+        return exito(MENSAJE_CLIENTE_ENCONTRADO, cliente);
     }
 
     @Override
     public GenericResponse consultarPorRfc(String rfc) {
         validador.validarRfc(rfc);
-        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorRfc(rfc), "RFC " + rfc));
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente encontrado");
-        respuesta.setDatos(cliente);
-        return respuesta;
+        ClienteResponse cliente = responderSiEsPropietario(clienteRepository.buscarPorRfc(rfc).orElseThrow(() -> noEncontrado("RFC " + rfc)));
+        return exito(MENSAJE_CLIENTE_ENCONTRADO, cliente);
     }
 
     @Override
     public GenericResponse consultarPorCorreo(String correo) {
         validador.validarCorreo(correo);
         String normalizado = clienteMapper.normalizarCorreo(correo);
-        ClienteResponse cliente = responderSiEsPropietario(obtener(clienteRepository.buscarPorCorreo(normalizado), "correo " + normalizado));
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente encontrado");
-        respuesta.setDatos(cliente);
-        return respuesta;
+        ClienteResponse cliente = responderSiEsPropietario(clienteRepository.buscarPorCorreo(normalizado).orElseThrow(() -> noEncontrado("correo " + normalizado)));
+        return exito(MENSAJE_CLIENTE_ENCONTRADO, cliente);
     }
 
     @Override
     public GenericResponse consultarPorNumeroCuenta(String numeroCuenta) {
         validador.validarNumeroCuenta(numeroCuenta);
         ClienteResponse cliente = responderSiEsPropietario(
-                obtener(clienteRepository.buscarPorNumeroCuenta(numeroCuenta), "número de cuenta " + numeroCuenta));
-        GenericResponse respuesta = new GenericResponse();
-        respuesta.setCodigo(0);
-        respuesta.setMensaje("Cliente encontrado");
-        respuesta.setDatos(cliente);
-        return respuesta;
+                clienteRepository.buscarPorNumeroCuenta(numeroCuenta).orElseThrow(() -> noEncontrado("número de cuenta " + numeroCuenta)));
+        return exito(MENSAJE_CLIENTE_ENCONTRADO, cliente);
     }
 
     // ===================== Métodos de apoyo =====================
@@ -307,8 +262,16 @@ public class ClienteServiceImpl implements ClienteService {
         return String.valueOf(cuentaRepository.siguienteNumeroCuenta());
     }
 
-    private Cliente obtener(Optional<Cliente> resultado, String criterio) {
-        return resultado.orElseThrow(() -> new ClienteNoEncontradoException(criterio));
+    private static ClienteNoEncontradoException noEncontrado(String criterio) {
+        return new ClienteNoEncontradoException(criterio);
+    }
+
+    private static GenericResponse exito(String mensaje, Object datos) {
+        GenericResponse respuesta = new GenericResponse();
+        respuesta.setCodigo(0);
+        respuesta.setMensaje(mensaje);
+        respuesta.setDatos(datos);
+        return respuesta;
     }
 
     private Optional<Cliente> clienteAutenticado() {

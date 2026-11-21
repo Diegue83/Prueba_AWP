@@ -6,7 +6,7 @@ import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
 import com.proyecto.servicios.mapper.GestoPagoTokenMapper;
 import com.proyecto.servicios.model.gestopago.GestoPagoAuthResponse;
 import com.proyecto.servicios.repositorys.gestopago.GestoPagoTokenRepository;
-import com.proyecto.servicios.service.Impl.GestoPagoTokenServiceImpl;
+import com.proyecto.servicios.service.impl.GestoPagoTokenServiceImpl;
 import feign.FeignException;
 import feign.Request;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +20,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,6 +125,56 @@ class GestoPagoTokenServiceImplTest {
                 .isInstanceOf(GestoPagoAutenticacionException.class)
                 .hasMessageNotContaining("password-de-prueba");
         verify(tokenRepository, never()).save(any());
+    }
+
+    @Test
+    void conLaTablaVaciaDosPeticionesSimultaneasSoloAutenticanUnaVez() throws Exception {
+        AtomicReference<GestoPagoToken> tablaTokens = new AtomicReference<>();
+        AtomicInteger consultas = new AtomicInteger();
+        when(tokenRepository.findByIdDistribuidorAndCodigoDispositivo(83, "GPS83-TPV-17"))
+                .thenAnswer(invocation -> {
+                    consultas.incrementAndGet();
+                    return Optional.ofNullable(tablaTokens.get());
+                });
+        when(tokenRepository.save(any())).thenAnswer(invocation -> {
+            GestoPagoToken guardado = invocation.getArgument(0);
+            tablaTokens.set(guardado);
+            return guardado;
+        });
+
+        GestoPagoAuthResponse authResponse = new GestoPagoAuthResponse();
+        authResponse.setToken("token-unico");
+        when(authClient.authenticate(83, "GPS83-TPV-17", "password-de-prueba")).thenAnswer(invocation -> {
+            long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (consultas.get() < 2 && System.nanoTime() < limite) {
+                Thread.onSpinWait();
+            }
+            return authResponse;
+        });
+        when(tokenMapper.toEntity(authResponse)).thenAnswer(invocation -> {
+            GestoPagoToken nuevo = new GestoPagoToken();
+            nuevo.setToken("token-unico");
+            nuevo.setFechaActualizacion(LocalDateTime.now());
+            return nuevo;
+        });
+
+        CyclicBarrier salida = new CyclicBarrier(2);
+        ExecutorService hilos = Executors.newFixedThreadPool(2);
+        try {
+            Callable<GestoPagoToken> peticion = () -> {
+                salida.await();
+                return service.obtenerTokenVigente();
+            };
+            Future<GestoPagoToken> primera = hilos.submit(peticion);
+            Future<GestoPagoToken> segunda = hilos.submit(peticion);
+
+            assertThat(primera.get(5, TimeUnit.SECONDS).getToken()).isEqualTo("token-unico");
+            assertThat(segunda.get(5, TimeUnit.SECONDS).getToken()).isEqualTo("token-unico");
+        } finally {
+            hilos.shutdownNow();
+        }
+        verify(authClient, times(1)).authenticate(83, "GPS83-TPV-17", "password-de-prueba");
+        verify(tokenRepository, times(1)).save(any());
     }
 
     @Test

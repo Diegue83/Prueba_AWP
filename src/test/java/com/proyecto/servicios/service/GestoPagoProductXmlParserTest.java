@@ -2,7 +2,7 @@ package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.exception.GestoPagoRespuestaException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductoXml;
-import com.proyecto.servicios.service.Impl.GestoPagoProductXmlParser;
+import com.proyecto.servicios.service.impl.GestoPagoProductXmlParser;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

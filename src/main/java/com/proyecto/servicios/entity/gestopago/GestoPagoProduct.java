@@ -14,6 +14,7 @@ import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Entity
 @Table(name = "gestopago_productos")
@@ -76,7 +77,7 @@ public class GestoPagoProduct implements Persistable<Integer> {
 
     @PrePersist
     void onCreate() {
-        fechaCreacion = LocalDateTime.now();
+        fechaCreacion = LocalDateTime.now(ZoneId.systemDefault());
         fechaActualizacion = fechaCreacion;
         nuevo = false;
     }
@@ -88,6 +89,6 @@ public class GestoPagoProduct implements Persistable<Integer> {
 
     @PreUpdate
     void onUpdate() {
-        fechaActualizacion = LocalDateTime.now();
+        fechaActualizacion = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

@@ -10,7 +10,7 @@ import com.proyecto.servicios.model.onboarding.CuentaRequest;
 import com.proyecto.servicios.model.onboarding.ConsultaCuentaRequest;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.security.ControlAcceso;
-import com.proyecto.servicios.service.Impl.CuentaServiceImpl;
+import com.proyecto.servicios.service.impl.CuentaServiceImpl;
 import com.proyecto.servicios.validation.ClienteValidador;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

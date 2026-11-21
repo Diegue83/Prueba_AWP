@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * Cuenta bancaria. No tiene setters públicos: solo se crea con abrir()
@@ -97,6 +98,6 @@ public class Cuenta {
 
     @PrePersist
     void alCrear() {
-        fechaApertura = LocalDate.now();
+        fechaApertura = LocalDate.now(ZoneId.systemDefault());
     }
 }

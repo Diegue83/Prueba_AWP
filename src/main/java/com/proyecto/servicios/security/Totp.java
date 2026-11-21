@@ -1,6 +1,7 @@
 package com.proyecto.servicios.security;
 
 import org.apache.commons.codec.binary.Base32;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -27,6 +28,7 @@ public class Totp {
     private final SecureRandom random = new SecureRandom();
     private final Clock reloj;
 
+    @Autowired
     public Totp() {
         this(Clock.systemUTC());
     }

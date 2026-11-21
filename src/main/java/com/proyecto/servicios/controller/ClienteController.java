@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.List;
 /**
  * El controlador solo recibe la petición y delega. No valida ni contiene reglas:
  * Bean Validation y el servicio se encargan de las reglas de los datos y del negocio.

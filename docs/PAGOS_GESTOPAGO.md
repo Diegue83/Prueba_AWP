@@ -152,6 +152,9 @@ nunca se envió responde código 70.
   el mismo servicio y monto en 24 h.
 - `getProductList` debe llamarse una vez al día y como máximo 3; si se excede, PuntoRed bloquea la IP.
   Por eso el catálogo se sirve desde PostgreSQL/Redis y la resincronización automática está apagada.
+  Además, cada intento de descarga (exitoso o no) se registra en Redis y en memoria, y no se repite antes de
+  `GESTOPAGO_PRODUCTOS_INTERVALO_DESCARGA_MINUTOS` (480 por omisión, es decir, máximo 3 al día), aunque
+  el catálogo siga vacío y lleguen peticiones o reinicios.
 
 ## 8. Configuración
 

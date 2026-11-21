@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.client.GestoPagoAuthClient;
 import com.proyecto.servicios.client.GestoPagoErrores;
@@ -15,7 +15,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 @Slf4j
@@ -26,6 +28,12 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     private final GestoPagoAuthClient gestoPagoAuthClient;
     private final GestoPagoTokenRepository tokenRepository;
     private final GestoPagoTokenMapper tokenMapper;
+
+    /**
+     * Al arrancar con la tabla vacía, el job programado y la carga del catálogo piden el token a la vez:
+     * sin este candado ambos se autentican e insertan la misma fila y falla uq_gestopago_tokens.
+     */
+    private final ReentrantLock candadoToken = new ReentrantLock();
 
     @Value("${gestopago.auth.id-distribuidor}")
     private Integer idDistribuidor;
@@ -57,28 +65,46 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     public void asegurarTokenVigente() {
         try {
             obtenerTokenVigente();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Error al obtener el token GestoPago: {}", e.getMessage());
         }
     }
 
     @Override
     public GestoPagoToken obtenerTokenVigente() {
-        Optional<GestoPagoToken> tokenGuardado = tokenRepository
-                .findByIdDistribuidorAndCodigoDispositivo(idDistribuidor, codigoDispositivo)
-                .filter(this::esVigente);
+        Optional<GestoPagoToken> tokenGuardado = buscarTokenVigente();
         if (tokenGuardado.isPresent()) {
             return tokenGuardado.get();
         }
 
-        log.info("No hay token GestoPago vigente en PostgreSQL; se solicitará uno nuevo");
-        return autenticarYGuardarToken();
+        candadoToken.lock();
+        try {
+            tokenGuardado = buscarTokenVigente();
+            if (tokenGuardado.isPresent()) {
+                return tokenGuardado.get();
+            }
+            log.info("No hay token GestoPago vigente en PostgreSQL; se solicitará uno nuevo");
+            return autenticarYGuardarToken();
+        } finally {
+            candadoToken.unlock();
+        }
     }
 
     @Override
     public GestoPagoToken solicitarNuevoToken() {
-        log.info("Solicitando un token nuevo a GestoPago para distribuidor={}", idDistribuidor);
-        return autenticarYGuardarToken();
+        candadoToken.lock();
+        try {
+            log.info("Solicitando un token nuevo a GestoPago para distribuidor={}", idDistribuidor);
+            return autenticarYGuardarToken();
+        } finally {
+            candadoToken.unlock();
+        }
+    }
+
+    private Optional<GestoPagoToken> buscarTokenVigente() {
+        return tokenRepository
+                .findByIdDistribuidorAndCodigoDispositivo(idDistribuidor, codigoDispositivo)
+                .filter(this::esVigente);
     }
 
     private GestoPagoToken autenticarYGuardarToken() {
@@ -124,7 +150,7 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
         }
         Long expiresIn = token.getExpiresIn();
         long segundos = expiresIn != null && expiresIn > 0 ? expiresIn : horasVigencia * 3600L;
-        return fechaActualizacion.plusSeconds(segundos).isAfter(LocalDateTime.now());
+        return fechaActualizacion.plusSeconds(segundos).isAfter(LocalDateTime.now(ZoneId.systemDefault()));
     }
 
     @Override

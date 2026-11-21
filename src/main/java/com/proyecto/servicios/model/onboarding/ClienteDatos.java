@@ -27,21 +27,21 @@ public abstract class ClienteDatos extends SolicitudEstricta {
     // ---- Datos personales ----
     @NotBlank(message = "nombre: es obligatorio")
     @Size(min = 3, max = 50, message = "nombre: debe tener entre 3 y 50 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "nombre: solo admite letras y espacios")
     private String nombre;
     @Size(max = 50, message = "segundoNombre: admite máximo 50 caracteres")
-    @Pattern(regexp = "^(?:|[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*)$",
+    @Pattern(regexp = "^(?:|[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+)$",
             message = "segundoNombre: solo admite letras y espacios")
     private String segundoNombre;      // opcional
     @NotBlank(message = "apellidoPaterno: es obligatorio")
     @Size(min = 3, max = 50, message = "apellidoPaterno: debe tener entre 3 y 50 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "apellidoPaterno: solo admite letras y espacios")
     private String apellidoPaterno;
     @NotBlank(message = "apellidoMaterno: es obligatorio")
     @Size(min = 3, max = 50, message = "apellidoMaterno: debe tener entre 3 y 50 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "apellidoMaterno: solo admite letras y espacios")
     private String apellidoMaterno;
     @NotBlank(message = "fechaNacimiento: es obligatoria")
@@ -53,7 +53,7 @@ public abstract class ClienteDatos extends SolicitudEstricta {
     private String sexo;
     @NotBlank(message = "nacionalidad: es obligatoria")
     @Size(min = 2, max = 40, message = "nacionalidad: debe tener entre 2 y 40 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "nacionalidad: solo admite letras y espacios")
     private String nacionalidad;
     @NotBlank(message = "estadoCivil: es obligatorio")
@@ -80,7 +80,7 @@ public abstract class ClienteDatos extends SolicitudEstricta {
     // ---- Información laboral ----
     @NotBlank(message = "ocupacion: es obligatoria")
     @Size(min = 2, max = 60, message = "ocupacion: debe tener entre 2 y 60 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "ocupacion: solo admite letras y espacios")
     private String ocupacion;
     @NotBlank(message = "empresa: es obligatoria")

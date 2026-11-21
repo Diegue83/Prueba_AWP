@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.entity.sf.Personas;
 import com.proyecto.servicios.model.GenericResponse;
@@ -6,18 +6,21 @@ import com.proyecto.servicios.model.PersonaResponse;
 import com.proyecto.servicios.model.PersonasRequest;
 import com.proyecto.servicios.repositorys.sf.PersonasRepository;
 import com.proyecto.servicios.service.PersonaService;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 @Service
-@Slf4j
 public class PersonasServiceImpl implements PersonaService {
-    @Autowired
-    private PersonasRepository personasRepository;
+    private static final String MENSAJE_PERSONA_NO_EXISTE = "La persona no existe";
+
+    private final PersonasRepository personasRepository;
+
+    public PersonasServiceImpl(PersonasRepository personasRepository) {
+        this.personasRepository = personasRepository;
+    }
+
     @Override
     public GenericResponse creaPersona(PersonasRequest personasRequest) {
         PersonaResponse person=new PersonaResponse();
@@ -47,7 +50,7 @@ public class PersonasServiceImpl implements PersonaService {
             mensaje = "La persona ha sido eliminada correctamente";
         }else{
             codigo = 1;
-            mensaje = "La persona no existe";
+            mensaje = MENSAJE_PERSONA_NO_EXISTE;
         }
         GenericResponse respuesta = new GenericResponse();
         respuesta.setCodigo(codigo);
@@ -70,7 +73,7 @@ public class PersonasServiceImpl implements PersonaService {
             mensaje = "La persona ha sido actualizada correctamente";
         }else{
             codigo = 1;
-            mensaje = "La persona no existe";
+            mensaje = MENSAJE_PERSONA_NO_EXISTE;
         }
         GenericResponse respuesta = new GenericResponse();
         respuesta.setCodigo(codigo);

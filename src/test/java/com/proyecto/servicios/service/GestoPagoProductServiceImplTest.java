@@ -4,12 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.proyecto.servicios.client.GestoPagoProductsIntegration;
 import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
 import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
+import com.proyecto.servicios.exception.GestoPagoRespuestaException;
 import com.proyecto.servicios.exception.GestoPagoTimeoutException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductoXml;
-import com.proyecto.servicios.service.Impl.GestoPagoProductPersistenceService;
-import com.proyecto.servicios.service.Impl.GestoPagoProductServiceImpl;
-import com.proyecto.servicios.service.Impl.GestoPagoProductXmlParser;
+import com.proyecto.servicios.service.impl.GestoPagoProductPersistenceService;
+import com.proyecto.servicios.service.impl.GestoPagoProductServiceImpl;
+import com.proyecto.servicios.service.impl.GestoPagoProductXmlParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -98,7 +100,8 @@ class GestoPagoProductServiceImplTest {
 
     @Test
     void siPostgresEstaVacioDescargaElCatalogoDeGestoPago() {
-        when(persistenceService.consultarCatalogo()).thenReturn(List.of(), List.of(producto(14302), producto(10034)));
+        when(persistenceService.consultarCatalogo())
+                .thenReturn(List.of(), List.of(), List.of(producto(14302), producto(10034)));
         when(tokenService.obtenerTokenVigente()).thenReturn(token("token-guardado"));
         when(productsIntegration.consultarCatalogoXml("token-guardado"))
                 .thenReturn(GestoPagoProductXmlParserTest.XML_CATALOGO);
@@ -137,6 +140,43 @@ class GestoPagoProductServiceImplTest {
         assertThatThrownBy(() -> service.sincronizarProductos())
                 .isInstanceOf(GestoPagoAutenticacionException.class);
         verify(persistenceService, never()).guardarCatalogo(anyList());
+    }
+
+    @Test
+    void conCatalogoVacioYDescargaFallidaNoVuelveALlamarAGestoPagoEnCadaPeticion() {
+        ReflectionTestUtils.setField(service, "intervaloDescargaMinutos", 480L);
+        when(persistenceService.consultarCatalogo()).thenReturn(List.of());
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true, false);
+        when(tokenService.obtenerTokenVigente()).thenReturn(token("token"));
+        when(productsIntegration.consultarCatalogoXml("token"))
+                .thenThrow(new GestoPagoRespuestaException("getProductList", "código 05 - Origen Valido"));
+
+        assertThatThrownBy(() -> service.consultarProductos())
+                .isInstanceOf(GestoPagoRespuestaException.class)
+                .hasMessageContaining("código 05");
+        assertThatThrownBy(() -> service.consultarProductos())
+                .isInstanceOf(GestoPagoRespuestaException.class)
+                .hasMessageContaining("ya se intentó descargar recientemente");
+
+        verify(productsIntegration).consultarCatalogoXml("token");
+    }
+
+    @Test
+    void sinRedisElLimiteDeDescargasSeRespetaEnMemoria() {
+        ReflectionTestUtils.setField(service, "intervaloDescargaMinutos", 480L);
+        when(persistenceService.consultarCatalogo()).thenReturn(List.of());
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
+                .thenThrow(new RedisConnectionFailureException("sin conexión"));
+        when(tokenService.obtenerTokenVigente()).thenReturn(token("token"));
+        when(productsIntegration.consultarCatalogoXml("token"))
+                .thenThrow(new GestoPagoTimeoutException("getProductList"));
+
+        assertThatThrownBy(() -> service.sincronizarProductos()).isInstanceOf(GestoPagoTimeoutException.class);
+        assertThatThrownBy(() -> service.sincronizarProductos())
+                .isInstanceOf(GestoPagoRespuestaException.class)
+                .hasMessageContaining("ya se intentó descargar recientemente");
+
+        verify(productsIntegration).consultarCatalogoXml("token");
     }
 
     @Test

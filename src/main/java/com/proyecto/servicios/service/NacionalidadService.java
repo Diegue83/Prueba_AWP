@@ -1,7 +1,6 @@
 package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.model.GenericResponse;
-import com.proyecto.servicios.model.onboarding.NacionalidadResponse;
 import com.proyecto.servicios.model.onboarding.NacionalidadRequest;
 
 public interface NacionalidadService {

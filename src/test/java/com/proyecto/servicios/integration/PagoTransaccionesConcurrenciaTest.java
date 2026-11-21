@@ -7,7 +7,7 @@ import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
 import com.proyecto.servicios.model.pagos.PagoValidado;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoRepository;
-import com.proyecto.servicios.service.Impl.PagoTransacciones;
+import com.proyecto.servicios.service.impl.PagoTransacciones;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

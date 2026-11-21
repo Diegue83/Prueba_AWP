@@ -7,7 +7,7 @@ import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.proyecto.servicios.exception.NoAutenticadoException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -17,7 +17,7 @@ import java.time.temporal.ChronoUnit;
  * El token guarda el id del cliente y su fecha de expiración; nadie puede
  * cambiarlos sin invalidar la firma.
  */
-@Component
+@Service
 public class TokenService {
 
     private static final String EMISOR = "onboarding-clientes";

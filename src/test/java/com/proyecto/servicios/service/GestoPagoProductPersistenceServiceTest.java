@@ -6,7 +6,7 @@ import com.proyecto.servicios.mapper.GestoPagoProductMapperImpl;
 import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductoXml;
 import com.proyecto.servicios.repositorys.gestopago.GestoPagoProductRepository;
-import com.proyecto.servicios.service.Impl.GestoPagoProductPersistenceService;
+import com.proyecto.servicios.service.impl.GestoPagoProductPersistenceService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

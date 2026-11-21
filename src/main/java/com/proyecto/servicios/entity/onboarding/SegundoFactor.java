@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * Segundo factor TOTP de un cliente. Nace inactivo al registrarse y solo se activa cuando
@@ -48,7 +49,7 @@ public class SegundoFactor {
     public static SegundoFactor registrar(Integer clienteId, String secretoCifrado) {
         SegundoFactor factor = new SegundoFactor();
         factor.clienteId = clienteId;
-        factor.fechaCreacion = LocalDateTime.now();
+        factor.fechaCreacion = LocalDateTime.now(ZoneId.systemDefault());
         factor.reemplazarSecreto(secretoCifrado);
         return factor;
     }
@@ -90,6 +91,6 @@ public class SegundoFactor {
     public void activar(long paso) {
         registrarExito(paso);
         activo = true;
-        fechaActivacion = LocalDateTime.now();
+        fechaActivacion = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

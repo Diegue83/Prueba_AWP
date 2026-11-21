@@ -38,7 +38,7 @@ public class DomicilioRequest extends SolicitudEstricta {
     private String municipio;
     @NotBlank(message = "domicilio.estado: es obligatorio")
     @Size(min = 2, max = 50, message = "domicilio.estado: debe tener entre 2 y 50 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "domicilio.estado: solo admite letras y espacios")
     private String estado;
     @NotBlank(message = "domicilio.codigoPostal: es obligatorio")
@@ -46,7 +46,7 @@ public class DomicilioRequest extends SolicitudEstricta {
     private String codigoPostal;
     @NotBlank(message = "domicilio.pais: es obligatorio")
     @Size(min = 2, max = 50, message = "domicilio.pais: debe tener entre 2 y 50 caracteres")
-    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$",
+    @Pattern(regexp = "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++(?: [A-Za-zÁÉÍÓÚÜÑáéíóúüñ]++)*+$",
             message = "domicilio.pais: solo admite letras y espacios")
     private String pais;
 }

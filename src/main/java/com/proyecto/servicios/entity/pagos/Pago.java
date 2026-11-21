@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Objects;
 
 /**
@@ -186,12 +187,12 @@ public class Pago {
 
     @PrePersist
     void alCrear() {
-        fechaCreacion = LocalDateTime.now();
+        fechaCreacion = LocalDateTime.now(ZoneId.systemDefault());
         fechaActualizacion = fechaCreacion;
     }
 
     @PreUpdate
     void alActualizar() {
-        fechaActualizacion = LocalDateTime.now();
+        fechaActualizacion = LocalDateTime.now(ZoneId.systemDefault());
     }
 }

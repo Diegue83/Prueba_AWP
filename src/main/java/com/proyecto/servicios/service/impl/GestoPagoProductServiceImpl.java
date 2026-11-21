@@ -1,10 +1,12 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.proyecto.servicios.client.GestoPagoProductsIntegration;
 import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
 import com.proyecto.servicios.exception.GestoPagoIntegracionException;
+import com.proyecto.servicios.exception.GestoPagoRespuestaException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
 import com.proyecto.servicios.service.GestoPagoProductService;
 import com.proyecto.servicios.service.GestoPagoTokenService;
@@ -17,14 +19,17 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 @Slf4j
 public class GestoPagoProductServiceImpl implements GestoPagoProductService {
 
     private static final String CACHE_KEY_PREFIX = "gestopago:productos:";
+    private static final String OPERACION_CATALOGO = "getProductList";
 
     private final GestoPagoProductsIntegration productsIntegration;
     private final GestoPagoTokenService tokenService;
@@ -35,6 +40,12 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
     private final JavaType tipoCatalogo;
     private final String cacheKey;
     private final Duration cacheTtl;
+    private final String intentoKey;
+    private final ReentrantLock candadoDescarga = new ReentrantLock();
+    private volatile Instant ultimoIntentoDescarga;
+
+    @Value("${gestopago.productos.intervalo-descarga-minutos:480}")
+    private long intervaloDescargaMinutos;
 
     public GestoPagoProductServiceImpl(
             GestoPagoProductsIntegration productsIntegration,
@@ -54,6 +65,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         this.objectMapper = objectMapper;
         this.tipoCatalogo = objectMapper.getTypeFactory().constructCollectionType(List.class, GestoPagoProducto.class);
         this.cacheKey = CACHE_KEY_PREFIX + idDistribuidor + ":" + codigoDispositivo;
+        this.intentoKey = cacheKey + ":ultimo-intento-descarga";
         this.cacheTtl = Duration.ofSeconds(cacheTtlSeconds);
     }
 
@@ -66,8 +78,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
 
         List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
         if (productos.isEmpty()) {
-            log.info("No hay productos de GestoPago en PostgreSQL; se descargará el catálogo");
-            return sincronizarProductos();
+            return descargarSiFalta();
         }
         guardarEnCache(productos);
         return productos;
@@ -109,11 +120,65 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         }
     }
 
+    private List<GestoPagoProducto> descargarSiFalta() {
+        candadoDescarga.lock();
+        try {
+            List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
+            if (!productos.isEmpty()) {
+                guardarEnCache(productos);
+                return productos;
+            }
+            log.info("No hay productos de GestoPago en PostgreSQL; se descargará el catálogo");
+            return sincronizarProductos();
+        } finally {
+            candadoDescarga.unlock();
+        }
+    }
+
     private List<GestoPagoProducto> descargarYGuardar() {
-        persistenceService.guardarCatalogo(xmlParser.parsear(descargarCatalogoXml()));
-        List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
-        guardarEnCache(productos);
-        return productos;
+        candadoDescarga.lock();
+        try {
+            reservarIntentoDescarga();
+            persistenceService.guardarCatalogo(xmlParser.parsear(descargarCatalogoXml()));
+            List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
+            guardarEnCache(productos);
+            return productos;
+        } finally {
+            candadoDescarga.unlock();
+        }
+    }
+
+    /**
+     * PuntoRed bloquea la IP si getProductList se llama más de 3 veces al día. Cada intento, exitoso o no,
+     * queda registrado en Redis (sobrevive a reinicios) y en memoria por si Redis no está disponible.
+     */
+    private void reservarIntentoDescarga() {
+        if (intervaloDescargaMinutos <= 0) {
+            return;
+        }
+        Duration intervalo = Duration.ofMinutes(intervaloDescargaMinutos);
+        Instant ahora = Instant.now();
+        if (ultimoIntentoDescarga != null && ahora.isBefore(ultimoIntentoDescarga.plus(intervalo))) {
+            throw descargaPospuesta(ultimoIntentoDescarga.plus(intervalo));
+        }
+        Boolean reservado = null;
+        try {
+            reservado = redisTemplate.opsForValue().setIfAbsent(intentoKey, ahora.toString(), intervalo);
+        } catch (RuntimeException e) {
+            log.warn("No fue posible registrar el intento de descarga en Redis ({})", e.getClass().getSimpleName());
+        }
+        if (Boolean.FALSE.equals(reservado)) {
+            throw descargaPospuesta(null);
+        }
+        ultimoIntentoDescarga = ahora;
+    }
+
+    private GestoPagoRespuestaException descargaPospuesta(Instant siguienteIntento) {
+        String cuando = siguienteIntento == null ? "más tarde" : "después de " + siguienteIntento;
+        log.warn("Se omite la descarga del catálogo de GestoPago: ya hubo un intento reciente; se podrá reintentar {}",
+                cuando);
+        return new GestoPagoRespuestaException(OPERACION_CATALOGO,
+                "el catálogo no está disponible y ya se intentó descargar recientemente; se reintentará " + cuando);
     }
 
     private String descargarCatalogoXml() {
@@ -130,7 +195,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         try {
             String json = redisTemplate.opsForValue().get(cacheKey);
             return json == null ? Optional.empty() : Optional.of(objectMapper.readValue(json, tipoCatalogo));
-        } catch (Exception e) {
+        } catch (JsonProcessingException | RuntimeException e) {
             log.warn("No fue posible leer el catálogo de Redis; se usará PostgreSQL ({})", e.getClass().getSimpleName());
             return Optional.empty();
         }
@@ -139,7 +204,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
     private void guardarEnCache(List<GestoPagoProducto> productos) {
         try {
             redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(productos), cacheTtl);
-        } catch (Exception e) {
+        } catch (JsonProcessingException | RuntimeException e) {
             log.warn("No fue posible guardar el catálogo en Redis ({})", e.getClass().getSimpleName());
         }
     }

@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.client.GestoPagoCifrador;
 import com.proyecto.servicios.client.GestoPagoTransaccionesIntegration;
@@ -150,7 +150,7 @@ public class PagoServiceImpl implements PagoService {
         } catch (ConfiguracionIncompletaException e) {
             return 0;
         }
-        LocalDateTime antesDe = LocalDateTime.now().minusMinutes(pagosProperties.getConciliacionMinutosPendiente());
+        LocalDateTime antesDe = LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(pagosProperties.getConciliacionMinutosPendiente());
         List<Long> ids = pagoRepository.buscarPorConciliar(POR_CONCILIAR, antesDe,
                 PageRequest.of(0, pagosProperties.getConciliacionLote()));
         ids.forEach(this::conciliar);
@@ -196,7 +196,7 @@ public class PagoServiceImpl implements PagoService {
     private void conciliar(Long idPago) {
         try {
             Pago pago = pagoRepository.findById(idPago).orElseThrow(() -> new PagoNoEncontradoException(idPago));
-            if (pago.getFechaCreacion().isBefore(LocalDateTime.now()
+            if (pago.getFechaCreacion().isBefore(LocalDateTime.now(ZoneId.systemDefault())
                     .minusHours(transaccionesProperties.getVigenciaConfirmacionHoras()))) {
                 transacciones.marcarRevisionManual(idPago);
                 return;

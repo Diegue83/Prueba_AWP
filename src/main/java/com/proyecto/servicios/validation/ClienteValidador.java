@@ -23,6 +23,13 @@ import java.util.Locale;
 @Component
 public class ClienteValidador {
 
+    private static final String CAMPO_NUMERO_CUENTA = "numeroCuenta";
+    private static final String CAMPO_ACTIVO = "activo";
+    private static final String CAMPO_FECHA_DESDE = "fechaRegistroDesde";
+    private static final String CAMPO_FECHA_HASTA = "fechaRegistroHasta";
+    private static final String CAMPO_CONTRASENA = "contrasena";
+    private static final String CAMPO_CORREO = "correo";
+
     private static final String MENSAJE_CUERPO = "La información enviada no es válida";
     private static final String MENSAJE_PARAMETROS = "Los parámetros enviados no son válidos";
 
@@ -32,10 +39,10 @@ public class ClienteValidador {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
         rechazarSiIncluido("id", solicitud.getId(), errores);
-        rechazarSiIncluido("numeroCuenta", solicitud.getNumeroCuenta(), errores);
-        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
-        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
-        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
+        rechazarSiIncluido(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
         int erroresPrevios;
 
         Validaciones.curp("curp", solicitud.getCurp(), errores);
@@ -45,7 +52,7 @@ public class ClienteValidador {
         Validaciones.rfc("rfc", solicitud.getRfc(), errores);
         boolean rfcValido = errores.size() == erroresPrevios;
 
-        Validaciones.contrasenaNueva("contrasena", solicitud.getContrasena(), errores);
+        Validaciones.contrasenaNueva(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
 
         erroresPrevios = errores.size();
         LocalDate nacimiento = validarDatosModificables(solicitud, errores);
@@ -76,9 +83,9 @@ public class ClienteValidador {
         if (solicitud.getNumeroCuenta() != null) {
             errores.add("numeroCuenta: no se puede modificar");
         }
-        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
-        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
-        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
         validarDatosModificables(solicitud, errores);
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
@@ -90,11 +97,11 @@ public class ClienteValidador {
         rechazarDatosModificables(solicitud, errores, true);
         rechazarSiIncluido("curp", solicitud.getCurp(), errores);
         rechazarSiIncluido("rfc", solicitud.getRfc(), errores);
-        rechazarSiIncluido("contrasena", solicitud.getContrasena(), errores);
-        rechazarSiIncluido("numeroCuenta", solicitud.getNumeroCuenta(), errores);
-        rechazarSiIncluido("activo", solicitud.getActivo(), errores);
-        rechazarSiIncluido("fechaRegistroDesde", solicitud.getFechaRegistroDesde(), errores);
-        rechazarSiIncluido("fechaRegistroHasta", solicitud.getFechaRegistroHasta(), errores);
+        rechazarSiIncluido(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
+        rechazarSiIncluido(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
 
@@ -102,7 +109,7 @@ public class ClienteValidador {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
         rechazarDatosModificables(solicitud, errores, false);
-        rechazarSiIncluido("contrasena", solicitud.getContrasena(), errores);
+        rechazarSiIncluido(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
         if (solicitud.getId() != null) {
             Validaciones.idPositivo("id", solicitud.getId(), errores);
         }
@@ -113,10 +120,10 @@ public class ClienteValidador {
             Validaciones.rfc("rfc", solicitud.getRfc().toUpperCase(Locale.ROOT), errores);
         }
         if (solicitud.getCorreo() != null) {
-            Validaciones.correo("correo", solicitud.getCorreo(), errores);
+            Validaciones.correo(CAMPO_CORREO, solicitud.getCorreo(), errores);
         }
         if (solicitud.getNumeroCuenta() != null) {
-            Validaciones.numeroCuenta("numeroCuenta", solicitud.getNumeroCuenta(), errores);
+            Validaciones.numeroCuenta(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
         }
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
@@ -126,7 +133,7 @@ public class ClienteValidador {
     public void validarLogin(LoginRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
-        Validaciones.correo("correo", solicitud.getCorreo(), errores);
+        Validaciones.correo(CAMPO_CORREO, solicitud.getCorreo(), errores);
         if (solicitud.getContrasena() == null || solicitud.getContrasena().isEmpty()) {
             errores.add("contrasena: es obligatoria y no puede estar vacía");
         }
@@ -155,13 +162,13 @@ public class ClienteValidador {
 
     public void validarCorreo(String correo) {
         List<String> errores = new ArrayList<>();
-        Validaciones.correo("correo", correo, errores);
+        Validaciones.correo(CAMPO_CORREO, correo, errores);
         lanzarSiHayErrores(MENSAJE_PARAMETROS, errores);
     }
 
     public void validarNumeroCuenta(String numeroCuenta) {
         List<String> errores = new ArrayList<>();
-        Validaciones.numeroCuenta("numeroCuenta", numeroCuenta, errores);
+        Validaciones.numeroCuenta(CAMPO_NUMERO_CUENTA, numeroCuenta, errores);
         lanzarSiHayErrores(MENSAJE_PARAMETROS, errores);
     }
 
@@ -192,7 +199,7 @@ public class ClienteValidador {
         Validaciones.catalogo("estadoCivil", datos.getEstadoCivil(), EstadoCivil.class, errores);
 
         // Datos de contacto
-        Validaciones.correo("correo", datos.getCorreo(), errores);
+        Validaciones.correo(CAMPO_CORREO, datos.getCorreo(), errores);
         Validaciones.telefono("telefonoMovil", datos.getTelefonoMovil(), true, errores);
         Validaciones.telefono("telefonoAlterno", datos.getTelefonoAlterno(), false, errores);
         if (datos.getTelefonoAlterno() != null && datos.getTelefonoAlterno().equals(datos.getTelefonoMovil())) {
@@ -237,7 +244,7 @@ public class ClienteValidador {
         rechazarSiIncluido("nacionalidad", solicitud.getNacionalidad(), errores);
         rechazarSiIncluido("estadoCivil", solicitud.getEstadoCivil(), errores);
         if (rechazarCorreo) {
-            rechazarSiIncluido("correo", solicitud.getCorreo(), errores);
+            rechazarSiIncluido(CAMPO_CORREO, solicitud.getCorreo(), errores);
         }
         rechazarSiIncluido("telefonoMovil", solicitud.getTelefonoMovil(), errores);
         rechazarSiIncluido("telefonoAlterno", solicitud.getTelefonoAlterno(), errores);

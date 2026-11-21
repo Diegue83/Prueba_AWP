@@ -8,7 +8,7 @@ import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
 import com.proyecto.servicios.model.gestopago.GestoPagoAuthResponse;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductoXml;
 import com.proyecto.servicios.security.TokenService;
-import com.proyecto.servicios.service.Impl.GestoPagoProductXmlParser;
+import com.proyecto.servicios.service.impl.GestoPagoProductXmlParser;
 import feign.Feign;
 import feign.Request;
 import feign.codec.Decoder;

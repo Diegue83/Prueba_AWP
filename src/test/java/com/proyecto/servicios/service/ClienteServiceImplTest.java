@@ -19,7 +19,7 @@ import com.proyecto.servicios.model.onboarding.ClienteResponse;
 import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
-import com.proyecto.servicios.service.Impl.ClienteServiceImpl;
+import com.proyecto.servicios.service.impl.ClienteServiceImpl;
 import com.proyecto.servicios.security.ControlAcceso;
 import com.proyecto.servicios.validation.ClienteValidador;
 import org.junit.jupiter.api.BeforeEach;

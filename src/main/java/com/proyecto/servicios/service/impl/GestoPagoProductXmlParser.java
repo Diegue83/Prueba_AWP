@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.client.GestoPagoProductsIntegration;
 import com.proyecto.servicios.exception.GestoPagoRespuestaException;
@@ -74,8 +74,8 @@ public class GestoPagoProductXmlParser {
 
     private GestoPagoProductListResponse leer(String xml) {
         XMLStreamReader reader = null;
-        try {
-            reader = inputFactory.createXMLStreamReader(new StringReader(xml));
+        try (StringReader fuente = new StringReader(xml)) {
+            reader = inputFactory.createXMLStreamReader(fuente);
             reader.nextTag();
             if (!RAIZ.equals(reader.getLocalName())) {
                 throw new GestoPagoRespuestaException(OPERACION, "el XML recibido no tiene el formato esperado");
