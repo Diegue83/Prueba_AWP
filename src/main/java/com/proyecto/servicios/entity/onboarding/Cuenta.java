@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * Cuenta bancaria. No tiene setters públicos: solo se crea con abrir()
@@ -68,12 +69,35 @@ public class Cuenta {
         this.estatus = EstatusCuenta.INACTIVA;
     }
 
+    /** Aparta el monto de un pago. Solo debe llamarse con la fila bloqueada (SELECT ... FOR UPDATE). */
+    public void retener(BigDecimal monto) {
+        if (monto == null || monto.signum() <= 0) {
+            throw new IllegalArgumentException("El monto a retener debe ser mayor que cero");
+        }
+        if (!tieneSaldoPara(monto)) {
+            throw new IllegalStateException("Saldo insuficiente");
+        }
+        saldo = saldo.subtract(monto).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Devuelve un monto retenido cuando el proveedor rechazó el pago. */
+    public void reembolsar(BigDecimal monto) {
+        if (monto == null || monto.signum() <= 0) {
+            throw new IllegalArgumentException("El monto a reembolsar debe ser mayor que cero");
+        }
+        saldo = saldo.add(monto).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public boolean tieneSaldoPara(BigDecimal monto) {
+        return saldo.compareTo(monto) >= 0;
+    }
+
     public boolean estaActiva() {
         return estatus == EstatusCuenta.ACTIVA;
     }
 
     @PrePersist
     void alCrear() {
-        fechaApertura = LocalDate.now();
+        fechaApertura = LocalDate.now(ZoneId.systemDefault());
     }
 }

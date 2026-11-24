@@ -2,12 +2,17 @@ package com.proyecto.servicios.repositorys.onboarding;
 
 import com.proyecto.servicios.entity.onboarding.Cuenta;
 import com.proyecto.servicios.enums.EstatusCuenta;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +28,33 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Integer> {
     @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente WHERE cu.estatus = :estatus AND cu.cliente.id = :clienteId ORDER BY cu.id")
     List<Cuenta> buscarPorEstatusYCliente(@Param("estatus") EstatusCuenta estatus,
                                           @Param("clienteId") Integer clienteId);
+
+    @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente "
+            + "WHERE cu.cliente.id = :clienteId "
+            + "AND (:numeroCuenta IS NULL OR cu.numeroCuenta = :numeroCuenta) "
+            + "AND (:estatus IS NULL OR cu.estatus = :estatus) "
+            + "AND (:desde IS NULL OR cu.fechaApertura >= :desde) "
+            + "AND (:hasta IS NULL OR cu.fechaApertura <= :hasta) "
+            + "ORDER BY cu.id")
+    List<Cuenta> buscarPorCriterios(@Param("clienteId") Integer clienteId,
+                                    @Param("numeroCuenta") String numeroCuenta,
+                                    @Param("estatus") EstatusCuenta estatus,
+                                    @Param("desde") LocalDate desde,
+                                    @Param("hasta") LocalDate hasta);
+
+    /**
+     * SELECT ... FOR UPDATE: serializa los movimientos de saldo de una misma cuenta.
+     * Si otra operación tiene la fila más de 5 s, se aborta en lugar de esperar indefinidamente.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
+    @Query("SELECT cu FROM Cuenta cu JOIN FETCH cu.cliente WHERE cu.numeroCuenta = :numeroCuenta")
+    Optional<Cuenta> bloquearPorNumero(@Param("numeroCuenta") String numeroCuenta);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
+    @Query("SELECT cu FROM Cuenta cu WHERE cu.id = :id")
+    Optional<Cuenta> bloquearPorId(@Param("id") Integer id);
 
     /** Proyección: trae únicamente la columna saldo, no la cuenta completa. */
     @Query("SELECT cu.saldo FROM Cuenta cu WHERE cu.numeroCuenta = :numeroCuenta")

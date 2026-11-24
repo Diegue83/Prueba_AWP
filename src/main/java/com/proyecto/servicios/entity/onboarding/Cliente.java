@@ -22,6 +22,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * Cliente persona física. Es la raíz del modelo: su domicilio, su cuenta y su
@@ -158,12 +159,12 @@ public class Cliente {
 
     @PrePersist
     void alCrear() {
-        fechaRegistro = LocalDate.now();
+        fechaRegistro = LocalDate.now(ZoneId.systemDefault());
         fechaActualizacion = fechaRegistro;
     }
 
     @PreUpdate
     void alActualizar() {
-        fechaActualizacion = LocalDate.now();
+        fechaActualizacion = LocalDate.now(ZoneId.systemDefault());
     }
 }

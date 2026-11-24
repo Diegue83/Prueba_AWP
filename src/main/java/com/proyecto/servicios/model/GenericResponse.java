@@ -10,4 +10,6 @@ import lombok.Setter;
 public class GenericResponse {
     private Integer codigo;
     private String mensaje;
+    private Object datos;
+
 }

@@ -6,7 +6,6 @@ import com.proyecto.servicios.enums.Sexo;
 import com.proyecto.servicios.exception.ValidacionException;
 import com.proyecto.servicios.model.onboarding.ClienteDatos;
 import com.proyecto.servicios.model.onboarding.ClienteRequest;
-import com.proyecto.servicios.model.onboarding.ClienteUpdateRequest;
 import com.proyecto.servicios.model.onboarding.DomicilioRequest;
 import com.proyecto.servicios.model.onboarding.LoginRequest;
 import org.springframework.stereotype.Component;
@@ -14,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Valida lo que llega a cada endpoint usando las funciones de {@link Validaciones}.
@@ -23,6 +23,13 @@ import java.util.List;
 @Component
 public class ClienteValidador {
 
+    private static final String CAMPO_NUMERO_CUENTA = "numeroCuenta";
+    private static final String CAMPO_ACTIVO = "activo";
+    private static final String CAMPO_FECHA_DESDE = "fechaRegistroDesde";
+    private static final String CAMPO_FECHA_HASTA = "fechaRegistroHasta";
+    private static final String CAMPO_CONTRASENA = "contrasena";
+    private static final String CAMPO_CORREO = "correo";
+
     private static final String MENSAJE_CUERPO = "La información enviada no es válida";
     private static final String MENSAJE_PARAMETROS = "Los parámetros enviados no son válidos";
 
@@ -31,6 +38,11 @@ public class ClienteValidador {
     public void validarAlta(ClienteRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
+        rechazarSiIncluido("id", solicitud.getId(), errores);
+        rechazarSiIncluido(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
         int erroresPrevios;
 
         Validaciones.curp("curp", solicitud.getCurp(), errores);
@@ -40,7 +52,7 @@ public class ClienteValidador {
         Validaciones.rfc("rfc", solicitud.getRfc(), errores);
         boolean rfcValido = errores.size() == erroresPrevios;
 
-        Validaciones.contrasenaNueva("contrasena", solicitud.getContrasena(), errores);
+        Validaciones.contrasenaNueva(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
 
         erroresPrevios = errores.size();
         LocalDate nacimiento = validarDatosModificables(solicitud, errores);
@@ -55,11 +67,64 @@ public class ClienteValidador {
 
     // ==================== PUT /clientes/{id} ====================
 
-    public void validarActualizacion(Integer id, ClienteUpdateRequest solicitud) {
+    public void validarActualizacion(ClienteRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
-        Validaciones.idPositivo("id", id, errores);
+        Validaciones.idPositivo("id", solicitud.getId(), errores);
+        if (solicitud.getCurp() != null) {
+            errores.add("curp: no se puede modificar");
+        }
+        if (solicitud.getRfc() != null) {
+            errores.add("rfc: no se puede modificar");
+        }
+        if (solicitud.getContrasena() != null) {
+            errores.add("contrasena: no se puede modificar");
+        }
+        if (solicitud.getNumeroCuenta() != null) {
+            errores.add("numeroCuenta: no se puede modificar");
+        }
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
         validarDatosModificables(solicitud, errores);
+        lanzarSiHayErrores(MENSAJE_CUERPO, errores);
+    }
+
+    public void validarBaja(ClienteRequest solicitud) {
+        validarCuerpoPresente(solicitud);
+        List<String> errores = new ArrayList<>();
+        Validaciones.idPositivo("id", solicitud.getId(), errores);
+        rechazarDatosModificables(solicitud, errores, true);
+        rechazarSiIncluido("curp", solicitud.getCurp(), errores);
+        rechazarSiIncluido("rfc", solicitud.getRfc(), errores);
+        rechazarSiIncluido(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
+        rechazarSiIncluido(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
+        rechazarSiIncluido(CAMPO_ACTIVO, solicitud.getActivo(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_DESDE, solicitud.getFechaRegistroDesde(), errores);
+        rechazarSiIncluido(CAMPO_FECHA_HASTA, solicitud.getFechaRegistroHasta(), errores);
+        lanzarSiHayErrores(MENSAJE_CUERPO, errores);
+    }
+
+    public void validarConsulta(ClienteRequest solicitud) {
+        validarCuerpoPresente(solicitud);
+        List<String> errores = new ArrayList<>();
+        rechazarDatosModificables(solicitud, errores, false);
+        rechazarSiIncluido(CAMPO_CONTRASENA, solicitud.getContrasena(), errores);
+        if (solicitud.getId() != null) {
+            Validaciones.idPositivo("id", solicitud.getId(), errores);
+        }
+        if (solicitud.getCurp() != null) {
+            Validaciones.curp("curp", solicitud.getCurp().toUpperCase(Locale.ROOT), errores);
+        }
+        if (solicitud.getRfc() != null) {
+            Validaciones.rfc("rfc", solicitud.getRfc().toUpperCase(Locale.ROOT), errores);
+        }
+        if (solicitud.getCorreo() != null) {
+            Validaciones.correo(CAMPO_CORREO, solicitud.getCorreo(), errores);
+        }
+        if (solicitud.getNumeroCuenta() != null) {
+            Validaciones.numeroCuenta(CAMPO_NUMERO_CUENTA, solicitud.getNumeroCuenta(), errores);
+        }
         lanzarSiHayErrores(MENSAJE_CUERPO, errores);
     }
 
@@ -68,7 +133,7 @@ public class ClienteValidador {
     public void validarLogin(LoginRequest solicitud) {
         validarCuerpoPresente(solicitud);
         List<String> errores = new ArrayList<>();
-        Validaciones.correo("correo", solicitud.getCorreo(), errores);
+        Validaciones.correo(CAMPO_CORREO, solicitud.getCorreo(), errores);
         if (solicitud.getContrasena() == null || solicitud.getContrasena().isEmpty()) {
             errores.add("contrasena: es obligatoria y no puede estar vacía");
         }
@@ -97,13 +162,13 @@ public class ClienteValidador {
 
     public void validarCorreo(String correo) {
         List<String> errores = new ArrayList<>();
-        Validaciones.correo("correo", correo, errores);
+        Validaciones.correo(CAMPO_CORREO, correo, errores);
         lanzarSiHayErrores(MENSAJE_PARAMETROS, errores);
     }
 
     public void validarNumeroCuenta(String numeroCuenta) {
         List<String> errores = new ArrayList<>();
-        Validaciones.numeroCuenta("numeroCuenta", numeroCuenta, errores);
+        Validaciones.numeroCuenta(CAMPO_NUMERO_CUENTA, numeroCuenta, errores);
         lanzarSiHayErrores(MENSAJE_PARAMETROS, errores);
     }
 
@@ -134,7 +199,7 @@ public class ClienteValidador {
         Validaciones.catalogo("estadoCivil", datos.getEstadoCivil(), EstadoCivil.class, errores);
 
         // Datos de contacto
-        Validaciones.correo("correo", datos.getCorreo(), errores);
+        Validaciones.correo(CAMPO_CORREO, datos.getCorreo(), errores);
         Validaciones.telefono("telefonoMovil", datos.getTelefonoMovil(), true, errores);
         Validaciones.telefono("telefonoAlterno", datos.getTelefonoAlterno(), false, errores);
         if (datos.getTelefonoAlterno() != null && datos.getTelefonoAlterno().equals(datos.getTelefonoMovil())) {
@@ -157,6 +222,7 @@ public class ClienteValidador {
                     + "municipio, estado, código postal y país");
             return;
         }
+
         Validaciones.textoGeneral("domicilio.calle", domicilio.getCalle(), true, 2, 100, errores);
         Validaciones.textoGeneral("domicilio.numeroExterior", domicilio.getNumeroExterior(), true, 1, 10, errores);
         Validaciones.textoGeneral("domicilio.numeroInterior", domicilio.getNumeroInterior(), false, 1, 10, errores);
@@ -165,6 +231,33 @@ public class ClienteValidador {
         Validaciones.soloLetras("domicilio.estado", domicilio.getEstado(), true, 2, 50, errores);
         Validaciones.codigoPostal("domicilio.codigoPostal", domicilio.getCodigoPostal(), errores);
         Validaciones.soloLetras("domicilio.pais", domicilio.getPais(), true, 2, 50, errores);
+    }
+
+    private void rechazarDatosModificables(ClienteRequest solicitud, List<String> errores,
+                                           boolean rechazarCorreo) {
+        rechazarSiIncluido("nombre", solicitud.getNombre(), errores);
+        rechazarSiIncluido("segundoNombre", solicitud.getSegundoNombre(), errores);
+        rechazarSiIncluido("apellidoPaterno", solicitud.getApellidoPaterno(), errores);
+        rechazarSiIncluido("apellidoMaterno", solicitud.getApellidoMaterno(), errores);
+        rechazarSiIncluido("fechaNacimiento", solicitud.getFechaNacimiento(), errores);
+        rechazarSiIncluido("sexo", solicitud.getSexo(), errores);
+        rechazarSiIncluido("nacionalidad", solicitud.getNacionalidad(), errores);
+        rechazarSiIncluido("estadoCivil", solicitud.getEstadoCivil(), errores);
+        if (rechazarCorreo) {
+            rechazarSiIncluido(CAMPO_CORREO, solicitud.getCorreo(), errores);
+        }
+        rechazarSiIncluido("telefonoMovil", solicitud.getTelefonoMovil(), errores);
+        rechazarSiIncluido("telefonoAlterno", solicitud.getTelefonoAlterno(), errores);
+        rechazarSiIncluido("domicilio", solicitud.getDomicilio(), errores);
+        rechazarSiIncluido("ocupacion", solicitud.getOcupacion(), errores);
+        rechazarSiIncluido("empresa", solicitud.getEmpresa(), errores);
+        rechazarSiIncluido("ingresoMensual", solicitud.getIngresoMensual(), errores);
+    }
+
+    private void rechazarSiIncluido(String campo, Object valor, List<String> errores) {
+        if (valor != null) {
+            errores.add(campo + ": no se admite en esta operación");
+        }
     }
 
     /** La CURP y el RFC contienen la fecha de nacimiento, y la CURP además el sexo: deben coincidir con lo capturado. */

@@ -8,6 +8,8 @@ import lombok.Data;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class GestoPagoAuthResponse {
 
+    private Boolean success;
+
     private String token;
 
     private String message;
