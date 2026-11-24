@@ -6,6 +6,11 @@
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql://localhost:5432/gestopago3</jdbc-url>
+      <jdbc-additional-properties>
+        <property name="com.intellij.clouds.kubernetes.db.host.port" />
+        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
+        <property name="com.intellij.clouds.kubernetes.db.container.port" />
+      </jdbc-additional-properties>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
     <data-source source="LOCAL" name="gestopago_dpei@dpg-db4non0m7kps73aoa25g-a.oregon-postgres.render.com" uuid="96f98548-a0da-4b36-aacc-862e5b9f9e76">
@@ -13,6 +18,34 @@
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql://dpg-db4non0m7kps73aoa25g-a.oregon-postgres.render.com:5432/gestopago_dpei</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="@oregon-keyvalue.render.com" uuid="c348a0b4-c2b8-4bc2-91b3-89970f605283">
+      <driver-ref>redis</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>jdbc.RedisDriver</jdbc-driver>
+      <jdbc-url>jdbc:redis://oregon-keyvalue.render.com:6379</jdbc-url>
+      <jdbc-additional-properties>
+        <property name="com.intellij.clouds.kubernetes.db.host.port" />
+        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
+        <property name="com.intellij.clouds.kubernetes.db.container.port" />
+      </jdbc-additional-properties>
+      <working-dir>$ProjectFileDir$</working-dir>
+      <driver-properties>
+        <property name="ssl" value="true" />
+        <property name="verifyConnectionMode" value="false" />
+      </driver-properties>
+    </data-source>
+    <data-source source="LOCAL" name="gestopago@awp-utng-9263f5a4.pgrzgfx7bcry3p90xg3kekerdd.c0.us-east-1.aws.pg.clickhouse.cloud" uuid="23a11732-cdf7-4f64-9368-56b8ffc94932">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://awp-utng-9263f5a4.pgrzgfx7bcry3p90xg3kekerdd.c0.us-east-1.aws.pg.clickhouse.cloud:5432/gestopago</jdbc-url>
+      <jdbc-additional-properties>
+        <property name="com.intellij.clouds.kubernetes.db.host.port" />
+        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
+        <property name="com.intellij.clouds.kubernetes.db.container.port" />
+      </jdbc-additional-properties>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

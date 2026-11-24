@@ -7,14 +7,20 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.proyecto.servicios.model.onboarding.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * Punto único donde cualquier error se convierte en una respuesta JSON con el mismo formato.
@@ -31,6 +37,36 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> manejarNegocio(NegocioException ex) {
         log.warn("Petición rechazada [{}]: {} {}", ex.getClave(), ex.getMessage(), ex.getDetalles());
         return responder(ex.getEstatus(), ex.getClave(), ex.getMessage(), ex.getDetalles());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> manejarValidacionDto(MethodArgumentNotValidException ex) {
+        Map<String, List<String>> erroresPorCampo = new LinkedHashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> {
+            String campo = error.getField();
+            String mensaje = error.getDefaultMessage() == null
+                    ? "valor no válido"
+                    : error.getDefaultMessage();
+            String prefijo = campo + ":";
+            if (mensaje.startsWith(prefijo)) {
+                mensaje = mensaje.substring(prefijo.length()).trim();
+            }
+            List<String> mensajes = erroresPorCampo.computeIfAbsent(campo, clave -> new ArrayList<>());
+            if (!mensajes.contains(mensaje)) {
+                mensajes.add(mensaje);
+            }
+        });
+
+        List<String> detalles = erroresPorCampo.entrySet().stream()
+                .flatMap(entrada -> entrada.getValue().stream()
+                        .map(mensaje -> entrada.getKey() + ": " + mensaje))
+                .toList();
+        ResponseEntity<ErrorResponse> respuesta = responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
+                "La información enviada no cumple las reglas de validación", detalles);
+        if (respuesta.getBody() != null) {
+            respuesta.getBody().setDatos(erroresPorCampo);
+        }
+        return respuesta;
     }
 
     /** El JSON no se pudo leer: mal formado, sin cuerpo, o un campo con un tipo de dato que no corresponde. */
@@ -131,7 +167,40 @@ public class GlobalExceptionHandler {
                 "La operación viola una restricción de datos (CURP, RFC, correo o cuenta ya registrados)", List.of());
     }
 
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ErrorResponse> manejarEncabezadoFaltante(MissingRequestHeaderException ex) {
+        return responder(HttpStatus.BAD_REQUEST, ERROR_VALIDACION,
+                "Falta un encabezado obligatorio",
+                List.of(ex.getHeaderName() + ": es obligatorio"));
+    }
+
+    /** Otra petición tiene bloqueada la misma cuenta o el mismo pago más allá del tiempo de espera. */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> manejarBloqueo(PessimisticLockingFailureException ex) {
+        return manejarNegocio(new OperacionEnCursoException());
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> manejarErrorInterno(Exception ex) {
+        if (ex instanceof org.springframework.web.ErrorResponse errorRespuestaSpring) {
+            HttpStatus estatus = HttpStatus.valueOf(errorRespuestaSpring.getStatusCode().value());
+            if (estatus.is4xxClientError()) {
+                return responder(estatus, "ERROR_SOLICITUD",
+                        "La solicitud no pudo procesarse; verifica la ruta, el método HTTP y el formato del contenido",
+                        List.of());
+            }
+        }
+        log.error("Error interno no controlado al procesar la solicitud", ex);
+        return responder(HttpStatus.INTERNAL_SERVER_ERROR, "ERROR_INTERNO",
+                "No fue posible completar la solicitud por un error interno. Contacta con soporte si el problema persiste",
+                List.of());
+    }
+
     private ResponseEntity<ErrorResponse> responder(HttpStatus estatus, String clave, String mensaje, List<String> detalles) {
-        return ResponseEntity.status(estatus).body(new ErrorResponse(estatus.value(), clave, mensaje, detalles));
+        String mensajeRespuesta = ERROR_VALIDACION.equals(clave) && !detalles.isEmpty()
+                ? mensaje + ": " + String.join("; ", detalles)
+                : mensaje;
+        return ResponseEntity.status(estatus)
+                .body(new ErrorResponse(clave, mensajeRespuesta, detalles));
     }
 }

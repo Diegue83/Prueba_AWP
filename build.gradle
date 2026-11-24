@@ -28,6 +28,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -55,8 +56,9 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.12.0'
     implementation 'commons-fileupload:commons-fileupload:1.5'
     implementation 'commons-io:commons-io:2.18.0'
+    implementation 'commons-codec:commons-codec'
     //implementation 'org.apache.httpcomponents:httpclient:4.5.14'
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.1'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.3.1'
     implementation 'org.mapstruct:mapstruct:1.6.3'
     //Serialización
     implementation 'com.google.code.gson:gson:2.10.1'
@@ -102,7 +104,21 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'externo'
+    }
+}
+
+// Pruebas contra los servicios reales (GestoPago) con las credenciales del .env local
+tasks.register('testExterno', Test) {
+    description = 'Ejecuta las pruebas que llaman a servicios externos reales'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'externo'
+    }
+    outputs.upToDateWhen { false }
 }
 
 springBoot {

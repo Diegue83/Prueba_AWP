@@ -1,10 +1,11 @@
 package com.proyecto.servicios.controller;
 
 import com.proyecto.servicios.model.onboarding.LoginRequest;
-import com.proyecto.servicios.model.onboarding.LoginResponse;
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.service.LoginService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +26,7 @@ public class LoginController {
 
     @Operation(summary = "Inicia sesión con correo y contraseña")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<LoginResponse> iniciarSesion(@RequestBody LoginRequest request) {
+    public ResponseEntity<GenericResponse> iniciarSesion(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(loginService.iniciarSesion(request));
     }
 }

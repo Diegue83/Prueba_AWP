@@ -14,6 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * Credenciales de acceso del cliente, en su propia tabla. Usa el id del cliente
@@ -53,11 +54,11 @@ public class Login {
     }
 
     public void registrarAcceso() {
-        this.ultimoAcceso = LocalDate.now();
+        this.ultimoAcceso = LocalDate.now(ZoneId.systemDefault());
     }
 
     @PrePersist
     void alCrear() {
-        fechaCreacion = LocalDate.now();
+        fechaCreacion = LocalDate.now(ZoneId.systemDefault());
     }
 }

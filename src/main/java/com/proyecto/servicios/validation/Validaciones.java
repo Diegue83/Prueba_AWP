@@ -4,6 +4,7 @@ import com.proyecto.servicios.enums.Catalogo;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -11,6 +12,7 @@ import java.time.format.ResolverStyle;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -29,7 +31,7 @@ public final class Validaciones {
     private static final String LETRAS = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]";
 
     /** Palabras de solo letras separadas por un espacio. */
-    private static final Pattern SOLO_LETRAS = Pattern.compile("^[" + LETRAS + "]+( [" + LETRAS + "]+)*$");
+    private static final Pattern SOLO_LETRAS = Pattern.compile("^" + LETRAS + "++(?: " + LETRAS + "++)*+$");
 
     /** Texto libre acotado: letras, dígitos, espacios y la puntuación habitual de direcciones y razones sociales. */
     private static final Pattern TEXTO_GENERAL = Pattern.compile("^[" + LETRAS + "0-9 .,#&'/-]+$");
@@ -42,16 +44,20 @@ public final class Validaciones {
             "^[A-Z][AEIOUX][A-Z]{2}"
                     + "\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])"
                     + "[HMX]"
-                    + "(AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE)"
+                    + "[A-Z]{2}"
                     + "[B-DF-HJ-NP-TV-Z]{3}"
                     + "[A-Z\\d]\\d$");
+
+    private static final Set<String> ENTIDADES_CURP = Set.of(
+            "AS", "BC", "BS", "CC", "CL", "CM", "CS", "CH", "DF", "DG", "GT", "GR", "HG", "JC", "MC", "MN", "MS",
+            "NT", "NL", "OC", "PL", "QT", "QR", "SP", "SL", "SR", "TC", "TS", "TL", "VZ", "YN", "ZS", "NE");
 
     /* RFC: 3 o 4 letras + fecha AAMMDD + homoclave de 3 = 12 o 13 caracteres. */
     private static final Pattern RFC = Pattern.compile(
             "^[A-ZÑ&]{3,4}\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])[A-Z\\d]{3}$");
 
     private static final Pattern CORREO = Pattern.compile(
-            "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
+            "^[A-Za-z0-9._%+-]++@(?:[A-Za-z0-9-]++\\.)++[A-Za-z]{2,}+$");
 
     private static final Pattern DIEZ_DIGITOS = Pattern.compile("^\\d{10}$");
     private static final Pattern CINCO_DIGITOS = Pattern.compile("^\\d{5}$");
@@ -61,6 +67,14 @@ public final class Validaciones {
             DateTimeFormatter.ofPattern("uuuu-MM-dd").withResolverStyle(ResolverStyle.STRICT);
     private static final DateTimeFormatter FECHA_CORTA = DateTimeFormatter.ofPattern("uuMMdd");
 
+    private record Formato(Pattern patron, String mensaje) {
+    }
+
+    private static final Formato FORMATO_LETRAS =
+            new Formato(SOLO_LETRAS, "solo admite letras y espacios (se permiten acentos y ñ)");
+    private static final Formato FORMATO_GENERAL =
+            new Formato(TEXTO_GENERAL, "solo admite letras, números, espacios y estos signos: . , # & ' / -");
+
     private Validaciones() {
     }
 
@@ -68,14 +82,12 @@ public final class Validaciones {
 
     /** Solo letras y espacios, con longitud entre min y max. */
     public static void soloLetras(String campo, String valor, boolean obligatorio, int min, int max, List<String> errores) {
-        texto(campo, valor, obligatorio, min, max, SOLO_LETRAS,
-                "solo admite letras y espacios (se permiten acentos y ñ)", errores);
+        texto(campo, valor, obligatorio, min, max, FORMATO_LETRAS, errores);
     }
 
     /** Letras, dígitos y puntuación básica, con longitud entre min y max. */
     public static void textoGeneral(String campo, String valor, boolean obligatorio, int min, int max, List<String> errores) {
-        texto(campo, valor, obligatorio, min, max, TEXTO_GENERAL,
-                "solo admite letras, números, espacios y estos signos: . , # & ' / -", errores);
+        texto(campo, valor, obligatorio, min, max, FORMATO_GENERAL, errores);
     }
 
     // ===================== Identificadores oficiales =====================
@@ -86,7 +98,7 @@ public final class Validaciones {
         }
         if (valor.length() != 18) {
             errores.add(campo + ": debe contener exactamente 18 caracteres");
-        } else if (!CURP.matcher(valor).matches()) {
+        } else if (!CURP.matcher(valor).matches() || !ENTIDADES_CURP.contains(valor.substring(11, 13))) {
             errores.add(campo + ": formato inválido; usa 4 letras, fecha AAMMDD, sexo H/M/X, "
                     + "clave de entidad, 3 consonantes, un carácter de homoclave y dígito verificador, "
                     + "todo en mayúsculas");
@@ -191,7 +203,7 @@ public final class Validaciones {
         if (nacimiento == null) {
             return null;
         }
-        LocalDate hoy = LocalDate.now();
+        LocalDate hoy = LocalDate.now(ZoneId.systemDefault());
         if (nacimiento.isAfter(hoy)) {
             errores.add(campo + ": no puede ser una fecha futura");
         } else if (Period.between(nacimiento, hoy).getYears() < EDAD_MINIMA) {
@@ -282,7 +294,7 @@ public final class Validaciones {
     }
 
     private static void texto(String campo, String valor, boolean obligatorio, int min, int max,
-                              Pattern formato, String mensajeFormato, List<String> errores) {
+                              Formato formato, List<String> errores) {
         if (falta(campo, valor, obligatorio, errores)) {
             return;
         }
@@ -291,8 +303,8 @@ public final class Validaciones {
             errores.add(campo + ": debe tener entre " + min + " y " + max
                     + " caracteres; se recibieron " + limpio.length());
         }
-        if (!formato.matcher(limpio).matches()) {
-            errores.add(campo + ": " + mensajeFormato);
+        if (!formato.patron().matcher(limpio).matches()) {
+            errores.add(campo + ": " + formato.mensaje());
         }
     }
 }
