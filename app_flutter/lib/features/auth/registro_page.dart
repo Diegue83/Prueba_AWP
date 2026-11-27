@@ -21,8 +21,30 @@ class RegistroPage extends StatefulWidget {
 }
 
 class _RegistroPageState extends State<RegistroPage> {
-  final _formulario = GlobalKey<FormState>();
+  static const _pasos = [
+    'Datos personales',
+    'Identificación',
+    'Contacto',
+    'Domicilio',
+    'Actividad económica',
+    'Acceso',
+  ];
+
+  /// Paso en el que está cada campo que valida el backend, para llevar al usuario al error.
+  static const _pasoDelCampo = {
+    'nombre': 0, 'segundoNombre': 0, 'apellidoPaterno': 0, 'apellidoMaterno': 0,
+    'fechaNacimiento': 0, 'sexo': 0, 'estadoCivil': 0, 'nacionalidad': 0,
+    'curp': 1, 'rfc': 1,
+    'correo': 2, 'telefonoMovil': 2, 'telefonoAlterno': 2,
+    'domicilio': 3,
+    'ocupacion': 4, 'empresa': 4, 'ingresoMensual': 4,
+    'contrasena': 5,
+  };
+
+  final _formularios = List.generate(_pasos.length, (_) => GlobalKey<FormState>());
   final _c = <String, TextEditingController>{};
+  int _paso = 0;
+  int _pasoMaximo = 0;
   DateTime? _fechaNacimiento;
   String? _sexo;
   String? _estadoCivil;
@@ -70,14 +92,55 @@ class _RegistroPageState extends State<RegistroPage> {
     }
   }
 
-  Future<void> _registrar() async {
-    setState(() => _error = null);
-    if (!_formulario.currentState!.validate() || _fechaNacimiento == null) {
-      if (_fechaNacimiento == null) {
-        setState(() => _error = const ApiException(mensaje: 'Indica tu fecha de nacimiento.'));
-      }
+  bool _validarPaso(int paso) => _formularios[paso].currentState?.validate() ?? true;
+
+  void _continuar() {
+    if (!_validarPaso(_paso)) {
       return;
     }
+    if (_paso == _pasos.length - 1) {
+      _registrar();
+      return;
+    }
+    setState(() {
+      _error = null;
+      _paso++;
+      if (_paso > _pasoMaximo) {
+        _pasoMaximo = _paso;
+      }
+    });
+  }
+
+  void _irAlPaso(int destino) {
+    if (destino == _paso || destino > _pasoMaximo) {
+      return;
+    }
+    if (destino > _paso && !_validarPaso(_paso)) {
+      return;
+    }
+    setState(() => _paso = destino);
+  }
+
+  /// Lleva al primer paso que tenga un campo señalado por el backend (por ejemplo "curp: ya registrada").
+  void _irAlPasoConError(ApiException error) {
+    final pasos = [
+      for (final detalle in error.detalles)
+        _pasoDelCampo[detalle.split(':').first.split('.').first.trim()],
+    ].whereType<int>();
+    if (pasos.isNotEmpty) {
+      _paso = pasos.reduce((a, b) => a < b ? a : b);
+    }
+  }
+
+  StepState _estado(int paso) {
+    if (paso == _paso) {
+      return StepState.editing;
+    }
+    return paso < _pasoMaximo || (paso == _pasoMaximo && paso < _paso) ? StepState.complete : StepState.indexed;
+  }
+
+  Future<void> _registrar() async {
+    setState(() => _error = null);
     final cliente = <String, dynamic>{
       'nombre': _texto('nombre'),
       'segundoNombre': _texto('segundoNombre'),
@@ -130,7 +193,10 @@ class _RegistroPageState extends State<RegistroPage> {
         context.go(Rutas.login);
       }
     } on ApiException catch (e) {
-      setState(() => _error = e);
+      setState(() {
+        _error = e;
+        _irAlPasoConError(e);
+      });
     } finally {
       if (mounted) {
         setState(() => _enviando = false);
@@ -141,89 +207,124 @@ class _RegistroPageState extends State<RegistroPage> {
   @override
   Widget build(BuildContext context) {
     final ancho = MediaQuery.sizeOf(context).width;
+    final horizontal = ancho >= 840;
     final dosColumnas = ancho >= 700;
+    final secciones = _secciones();
     return Scaffold(
       appBar: AppBar(title: const Text('Crear cuenta')),
-      body: Form(
-        key: _formulario,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            ContenidoCentrado(
-              anchoMaximo: 860,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Seccion(titulo: 'Datos personales', dosColumnas: dosColumnas, campos: [
-                    _campoTexto('nombre', 'Nombre',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'El nombre', minimo: 3)),
-                    _campoTexto('segundoNombre', 'Segundo nombre (opcional)',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'El segundo nombre', obligatorio: false)),
-                    _campoTexto('apellidoPaterno', 'Apellido paterno',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'El apellido paterno')),
-                    _campoTexto('apellidoMaterno', 'Apellido materno',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'El apellido materno')),
-                    _selectorFecha(),
-                    _desplegable('Sexo', _sexo, _sexos, (v) => setState(() => _sexo = v)),
-                    _desplegable('Estado civil', _estadoCivil, _estadosCiviles, (v) => setState(() => _estadoCivil = v)),
-                    _selectorNacionalidad(),
-                  ]),
-                  _Seccion(titulo: 'Identificación', dosColumnas: dosColumnas, campos: [
-                    _campoTexto('curp', 'CURP', mayusculas: true, validador: Validadores.curp, longitud: 18),
-                    _campoTexto('rfc', 'RFC con homoclave', mayusculas: true, validador: Validadores.rfc, longitud: 13),
-                  ]),
-                  _Seccion(titulo: 'Contacto', dosColumnas: dosColumnas, campos: [
-                    _campoTexto('correo', 'Correo electrónico',
-                        teclado: TextInputType.emailAddress, validador: Validadores.correo),
-                    _campoTexto('telefonoMovil', 'Teléfono móvil', teclado: TextInputType.phone,
-                        soloDigitos: true, longitud: 10, validador: Validadores.telefono),
-                    _campoTexto('telefonoAlterno', 'Teléfono alterno (opcional)', teclado: TextInputType.phone,
-                        soloDigitos: true, longitud: 10, validador: (v) => Validadores.telefono(v, obligatorio: false)),
-                  ]),
-                  _Seccion(titulo: 'Domicilio', dosColumnas: dosColumnas, campos: [
-                    _campoTexto('calle', 'Calle', validador: (v) => Validadores.obligatorio(v, 'La calle')),
-                    _campoTexto('numeroExterior', 'Número exterior',
-                        validador: (v) => Validadores.obligatorio(v, 'El número exterior')),
-                    _campoTexto('numeroInterior', 'Número interior (opcional)'),
-                    _campoTexto('colonia', 'Colonia', validador: (v) => Validadores.obligatorio(v, 'La colonia')),
-                    _campoTexto('municipio', 'Municipio o alcaldía',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'El municipio')),
-                    _campoTexto('estado', 'Estado', validador: (v) => Validadores.soloLetras(v, campo: 'El estado')),
-                    _campoTexto('codigoPostal', 'Código postal', teclado: TextInputType.number,
-                        soloDigitos: true, longitud: 5, validador: Validadores.codigoPostal),
-                    _campoTexto('pais', 'País', inicial: 'México',
-                        validador: (v) => Validadores.obligatorio(v, 'El país')),
-                  ]),
-                  _Seccion(titulo: 'Actividad económica', dosColumnas: dosColumnas, campos: [
-                    _campoTexto('ocupacion', 'Ocupación',
-                        validador: (v) => Validadores.soloLetras(v, campo: 'La ocupación')),
-                    _campoTexto('empresa', 'Empresa', validador: (v) => Validadores.obligatorio(v, 'La empresa')),
-                    _campoTexto('ingresoMensual', 'Ingreso mensual', teclado: const TextInputType.numberWithOptions(decimal: true),
-                        prefijo: r'$ ', validador: (v) => Validadores.monto(v, minimo: 0.01, maximo: 9999999999)),
-                  ]),
-                  _Seccion(titulo: 'Acceso', dosColumnas: dosColumnas, campos: [
-                    _campoContrasena('contrasena', 'Contraseña', Validadores.contrasenaNueva),
-                    _campoContrasena('confirmacion', 'Confirma tu contraseña',
-                        (v) => v == _c['contrasena']?.text ? null : 'Las contraseñas no coinciden'),
-                  ]),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Card(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(_error!.mensajeCompleto,
-                              style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer)),
-                        ),
-                      ),
-                    ),
-                  BotonConCarga(texto: 'Crear mi cuenta', cargando: _enviando, alPresionar: _registrar),
-                ],
+      body: ContenidoCentrado(
+        anchoMaximo: 960,
+        child: Stepper(
+          type: horizontal ? StepperType.horizontal : StepperType.vertical,
+          currentStep: _paso,
+          onStepContinue: _enviando ? null : _continuar,
+          onStepCancel: _enviando || _paso == 0 ? null : () => setState(() => _paso--),
+          onStepTapped: _enviando ? null : _irAlPaso,
+          controlsBuilder: _controles,
+          steps: [
+            for (var i = 0; i < _pasos.length; i++)
+              Step(
+                title: Text(_pasos[i]),
+                isActive: i <= _pasoMaximo,
+                state: _estado(i),
+                content: Form(
+                  key: _formularios[i],
+                  child: _Campos(dosColumnas: dosColumnas, campos: secciones[i]),
+                ),
               ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  List<List<Widget>> _secciones() => [
+        [
+          _campoTexto('nombre', 'Nombre',
+              validador: (v) => Validadores.soloLetras(v, campo: 'El nombre', minimo: 3)),
+          _campoTexto('segundoNombre', 'Segundo nombre (opcional)',
+              validador: (v) => Validadores.soloLetras(v, campo: 'El segundo nombre', obligatorio: false)),
+          _campoTexto('apellidoPaterno', 'Apellido paterno',
+              validador: (v) => Validadores.soloLetras(v, campo: 'El apellido paterno')),
+          _campoTexto('apellidoMaterno', 'Apellido materno',
+              validador: (v) => Validadores.soloLetras(v, campo: 'El apellido materno')),
+          _selectorFecha(),
+          _desplegable('Sexo', _sexo, _sexos, (v) => setState(() => _sexo = v)),
+          _desplegable('Estado civil', _estadoCivil, _estadosCiviles, (v) => setState(() => _estadoCivil = v)),
+          _selectorNacionalidad(),
+        ],
+        [
+          _campoTexto('curp', 'CURP', mayusculas: true, validador: Validadores.curp, longitud: 18),
+          _campoTexto('rfc', 'RFC con homoclave', mayusculas: true, validador: Validadores.rfc, longitud: 13),
+        ],
+        [
+          _campoTexto('correo', 'Correo electrónico', teclado: TextInputType.emailAddress, validador: Validadores.correo),
+          _campoTexto('telefonoMovil', 'Teléfono móvil', teclado: TextInputType.phone,
+              soloDigitos: true, longitud: 10, validador: Validadores.telefono),
+          _campoTexto('telefonoAlterno', 'Teléfono alterno (opcional)', teclado: TextInputType.phone,
+              soloDigitos: true, longitud: 10, validador: (v) => Validadores.telefono(v, obligatorio: false)),
+        ],
+        [
+          _campoTexto('calle', 'Calle', validador: (v) => Validadores.obligatorio(v, 'La calle')),
+          _campoTexto('numeroExterior', 'Número exterior',
+              validador: (v) => Validadores.obligatorio(v, 'El número exterior')),
+          _campoTexto('numeroInterior', 'Número interior (opcional)'),
+          _campoTexto('colonia', 'Colonia', validador: (v) => Validadores.obligatorio(v, 'La colonia')),
+          _campoTexto('municipio', 'Municipio o alcaldía',
+              validador: (v) => Validadores.soloLetras(v, campo: 'El municipio')),
+          _campoTexto('estado', 'Estado', validador: (v) => Validadores.soloLetras(v, campo: 'El estado')),
+          _campoTexto('codigoPostal', 'Código postal', teclado: TextInputType.number,
+              soloDigitos: true, longitud: 5, validador: Validadores.codigoPostal),
+          _campoTexto('pais', 'País', inicial: 'México', validador: (v) => Validadores.obligatorio(v, 'El país')),
+        ],
+        [
+          _campoTexto('ocupacion', 'Ocupación', validador: (v) => Validadores.soloLetras(v, campo: 'La ocupación')),
+          _campoTexto('empresa', 'Empresa', validador: (v) => Validadores.obligatorio(v, 'La empresa')),
+          _campoTexto('ingresoMensual', 'Ingreso mensual',
+              teclado: const TextInputType.numberWithOptions(decimal: true),
+              prefijo: r'$ ', validador: (v) => Validadores.monto(v, minimo: 0.01, maximo: 9999999999)),
+        ],
+        [
+          _campoContrasena('contrasena', 'Contraseña', Validadores.contrasenaNueva),
+          _campoContrasena('confirmacion', 'Confirma tu contraseña',
+              (v) => v == _c['contrasena']?.text ? null : 'Las contraseñas no coinciden'),
+        ],
+      ];
+
+  Widget _controles(BuildContext context, ControlsDetails detalles) {
+    final ultimo = detalles.stepIndex == _pasos.length - 1;
+    final colores = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null && detalles.stepIndex == _paso) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: colores.errorContainer, borderRadius: BorderRadius.circular(12)),
+              child: Text(_error!.mensajeCompleto, style: TextStyle(color: colores.onErrorContainer)),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              BotonConCarga(
+                texto: ultimo ? 'Crear mi cuenta' : 'Continuar',
+                icono: ultimo ? Icons.check : Icons.arrow_forward,
+                cargando: _enviando,
+                alPresionar: detalles.onStepContinue,
+              ),
+              if (detalles.stepIndex > 0)
+                TextButton(onPressed: detalles.onStepCancel, child: const Text('Atrás')),
+              Text('Paso ${detalles.stepIndex + 1} de ${_pasos.length}',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -275,13 +376,23 @@ class _RegistroPageState extends State<RegistroPage> {
 
   Widget _selectorFecha() {
     final texto = _fechaNacimiento == null ? '' : DateFormat('d MMMM yyyy', 'es_MX').format(_fechaNacimiento!);
-    return InkWell(
-      onTap: _elegirFecha,
-      borderRadius: BorderRadius.circular(12),
-      child: InputDecorator(
-        decoration: const InputDecoration(labelText: 'Fecha de nacimiento', suffixIcon: Icon(Icons.calendar_today)),
-        isEmpty: _fechaNacimiento == null,
-        child: Text(texto),
+    return FormField<DateTime>(
+      validator: (_) => _fechaNacimiento == null ? 'Indica tu fecha de nacimiento' : null,
+      builder: (campo) => InkWell(
+        onTap: () async {
+          await _elegirFecha();
+          campo.didChange(_fechaNacimiento);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: 'Fecha de nacimiento',
+            suffixIcon: const Icon(Icons.calendar_today),
+            errorText: campo.errorText,
+          ),
+          isEmpty: _fechaNacimiento == null,
+          child: Text(texto),
+        ),
       ),
     );
   }
@@ -317,38 +428,25 @@ class _RegistroPageState extends State<RegistroPage> {
   }
 }
 
-class _Seccion extends StatelessWidget {
-  const _Seccion({required this.titulo, required this.campos, required this.dosColumnas});
+class _Campos extends StatelessWidget {
+  const _Campos({required this.campos, required this.dosColumnas});
 
-  final String titulo;
   final List<Widget> campos;
   final bool dosColumnas;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(titulo, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, restricciones) {
-                  final ancho = dosColumnas ? (restricciones.maxWidth - 16) / 2 : restricciones.maxWidth;
-                  return Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [for (final campo in campos) SizedBox(width: ancho, child: campo)],
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
+      padding: const EdgeInsets.only(top: 8),
+      child: LayoutBuilder(
+        builder: (context, restricciones) {
+          final ancho = dosColumnas ? (restricciones.maxWidth - 16) / 2 : restricciones.maxWidth;
+          return Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [for (final campo in campos) SizedBox(width: ancho, child: campo)],
+          );
+        },
       ),
     );
   }

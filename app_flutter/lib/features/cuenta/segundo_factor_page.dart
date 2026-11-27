@@ -21,6 +21,7 @@ class _SegundoFactorPageState extends State<SegundoFactorPage> {
   final _formulario = GlobalKey<FormState>();
   final _codigo = TextEditingController();
   RegistroSegundoFactor? _registro;
+  int _paso = 0;
   bool _cargando = false;
   bool _activado = false;
   bool _yaActivo = false;
@@ -39,7 +40,10 @@ class _SegundoFactorPageState extends State<SegundoFactorPage> {
     });
     try {
       final registro = await context.read<CuentaRepository>().registrarSegundoFactor();
-      setState(() => _registro = registro);
+      setState(() {
+        _registro = registro;
+        _paso = 1;
+      });
     } on ApiException catch (e) {
       setState(() {
         if (e.clave == '2FA_YA_ACTIVO') {
@@ -104,59 +108,120 @@ class _SegundoFactorPageState extends State<SegundoFactorPage> {
           'Google Authenticator o Microsoft Authenticator.',
           style: tema.textTheme.bodyLarge,
         ),
-        const SizedBox(height: 24),
-        if (registro == null)
-          BotonConCarga(texto: 'Generar código QR', icono: Icons.qr_code, cargando: _cargando, alPresionar: _generar)
-        else ...[
-          Text('1. Escanea este código con tu app', style: tema.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Center(
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(12),
-              child: QrImageView(data: registro.uriOtpauth, size: 220, semanticsLabel: 'Código QR para tu app autenticadora'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('¿No puedes escanear? Escribe esta clave:', style: tema.textTheme.bodyMedium),
-          Row(
-            children: [
-              Expanded(child: SelectableText(registro.secreto, style: tema.textTheme.titleMedium)),
-              IconButton(
-                tooltip: 'Copiar clave',
-                icon: const Icon(Icons.copy),
-                onPressed: () => Clipboard.setData(ClipboardData(text: registro.secreto)),
+        const SizedBox(height: 8),
+        Stepper(
+          physics: const NeverScrollableScrollPhysics(),
+          currentStep: _paso,
+          onStepTapped: (paso) {
+            if (registro != null && paso > 0) {
+              setState(() => _paso = paso);
+            }
+          },
+          controlsBuilder: (context, detalles) => _controles(detalles.stepIndex),
+          steps: [
+            Step(
+              title: const Text('Genera tu clave'),
+              isActive: true,
+              state: registro == null ? StepState.editing : StepState.complete,
+              content: const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Se crea una clave única para tu cuenta. Solo se muestra una vez.'),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Guárdala en un lugar seguro: no se volverá a mostrar.',
-            style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.error),
-          ),
-          const SizedBox(height: 24),
-          Text('2. Escribe el código que muestra tu app', style: tema.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Form(
-            key: _formulario,
-            child: TextFormField(
-              controller: _codigo,
-              decoration: const InputDecoration(labelText: 'Código de 6 dígitos', counterText: ''),
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              autofillHints: const [AutofillHints.oneTimeCode],
-              validator: Validadores.codigo2fa,
-              onFieldSubmitted: (_) => _activar(),
             ),
-          ),
-          const SizedBox(height: 16),
-          BotonConCarga(texto: 'Activar', icono: Icons.check, cargando: _cargando, alPresionar: _activar),
-        ],
+            Step(
+              title: const Text('Agrégala a tu app autenticadora'),
+              isActive: registro != null,
+              state: _paso > 1 ? StepState.complete : StepState.indexed,
+              content: registro == null ? const SizedBox.shrink() : _clave(registro),
+            ),
+            Step(
+              title: const Text('Confirma con un código'),
+              isActive: _paso == 2,
+              content: Form(
+                key: _formulario,
+                child: TextFormField(
+                  controller: _codigo,
+                  decoration: const InputDecoration(
+                    labelText: 'Código de 6 dígitos',
+                    helperText: 'El que muestra tu app en este momento',
+                    counterText: '',
+                  ),
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  autofillHints: const [AutofillHints.oneTimeCode],
+                  validator: Validadores.codigo2fa,
+                  onFieldSubmitted: (_) => _activar(),
+                ),
+              ),
+            ),
+          ],
+        ),
         if (_error != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Text(_error!.mensajeCompleto, style: TextStyle(color: tema.colorScheme.error)),
         ],
+      ],
+    );
+  }
+
+  Widget _controles(int paso) {
+    final Widget principal = switch (paso) {
+      0 => BotonConCarga(texto: 'Generar código QR', icono: Icons.qr_code, cargando: _cargando, alPresionar: _generar),
+      1 => FilledButton.icon(
+          onPressed: () => setState(() => _paso = 2),
+          icon: const Icon(Icons.arrow_forward),
+          label: const Text('Ya la agregué'),
+        ),
+      _ => BotonConCarga(texto: 'Activar', icono: Icons.check, cargando: _cargando, alPresionar: _activar),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          principal,
+          if (paso == 2)
+            TextButton(
+              onPressed: _cargando ? null : () => setState(() => _paso = 1),
+              child: const Text('Ver el código QR'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _clave(RegistroSegundoFactor registro) {
+    final tema = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Escanea este código con tu app:'),
+        const SizedBox(height: 12),
+        Center(
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.all(12),
+            child: QrImageView(data: registro.uriOtpauth, size: 220, semanticsLabel: 'Código QR para tu app autenticadora'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text('¿No puedes escanear? Escribe esta clave:', style: tema.textTheme.bodyMedium),
+        Row(
+          children: [
+            Expanded(child: SelectableText(registro.secreto, style: tema.textTheme.titleMedium)),
+            IconButton(
+              tooltip: 'Copiar clave',
+              icon: const Icon(Icons.copy),
+              onPressed: () => Clipboard.setData(ClipboardData(text: registro.secreto)),
+            ),
+          ],
+        ),
+        Text(
+          'Guárdala en un lugar seguro: no se volverá a mostrar.',
+          style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.error),
+        ),
       ],
     );
   }

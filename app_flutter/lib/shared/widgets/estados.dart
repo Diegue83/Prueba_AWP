@@ -119,7 +119,7 @@ class BotonConCarga extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icono != null) ...[Icon(icono, size: 20), const SizedBox(width: 8)],
-                  Text(texto),
+                  Flexible(child: Text(texto, overflow: TextOverflow.ellipsis)),
                 ],
               ),
       ),
