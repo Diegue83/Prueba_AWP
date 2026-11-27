@@ -1,6 +1,7 @@
 package com.proyecto.servicios.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.proyecto.servicios.client.GestoPagoImagenes;
 import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
 import com.proyecto.servicios.service.GestoPagoProductService;
@@ -16,7 +17,8 @@ import static org.mockito.Mockito.when;
 class GestoPagoProductControllerTest {
 
     private final GestoPagoProductService productService = mock(GestoPagoProductService.class);
-    private final GestoPagoProductController controller = new GestoPagoProductController(productService);
+    private final GestoPagoProductController controller = new GestoPagoProductController(productService,
+            mock(GestoPagoImagenes.class));
 
     @Test
     void consultarProductosDevuelveElCatalogoEnElEnvelopeDelProyecto() throws Exception {

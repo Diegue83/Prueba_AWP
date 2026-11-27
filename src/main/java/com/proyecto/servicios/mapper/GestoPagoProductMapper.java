@@ -17,5 +17,12 @@ public interface GestoPagoProductMapper {
     @Mapping(target = "showAyuda", defaultValue = "false")
     void updateEntity(GestoPagoProductoXml origen, @MappingTarget GestoPagoProduct entity);
 
+    @Mapping(target = "fechaCreacion", ignore = true)
+    @Mapping(target = "fechaActualizacion", ignore = true)
+    @Mapping(target = "nuevo", ignore = true)
+    @Mapping(target = "hasDigitoVerificador", defaultValue = "false")
+    @Mapping(target = "showAyuda", defaultValue = "false")
+    void updateEntity(GestoPagoProducto origen, @MappingTarget GestoPagoProduct entity);
+
     GestoPagoProducto toDto(GestoPagoProduct entity);
 }

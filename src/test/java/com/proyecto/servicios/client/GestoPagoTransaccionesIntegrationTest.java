@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.proyecto.servicios.config.GestoPagoTransaccionesProperties;
 import com.proyecto.servicios.exception.ConfiguracionIncompletaException;
 import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
+import com.proyecto.servicios.model.gestopago.GestoPagoReferenciaResultado;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxPayload;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado.Tipo;
@@ -116,6 +117,36 @@ class GestoPagoTransaccionesIntegrationTest {
         assertThat(rutaRecibida.get()).isEqualTo("/sistema/service/confirmTx.do");
         JsonNode json = objectMapper.readTree(cifrador.descifrar(formularioRecibido.get().get("signed")));
         assertThat(json.get("upc").asText()).isEqualTo("ABC123DEF456GHI");
+    }
+
+    @Test
+    void verifyReferenceEnviaSoloServicioProductoYReferenciaYLeeElSaldo() throws Exception {
+        cuerpo = "<RESPONSE><MENSAJE><CODIGO>01</CODIGO><TEXTO>Referencia Valida</TEXTO>"
+                + "<SALDO>1034.5</SALDO></MENSAJE></RESPONSE>";
+
+        GestoPagoReferenciaResultado resultado = integracion(url()).verificarReferencia(
+                new GestoPagoTxPayload(108, 272, "5610440665", null, null, null, null, null), "token-x");
+
+        assertThat(rutaRecibida.get()).isEqualTo("/sistema/service/verifyReference.do");
+        assertThat(authorizationRecibido.get()).isEqualTo("Bearer token-x");
+        JsonNode json = objectMapper.readTree(cifrador.descifrar(formularioRecibido.get().get("signed")));
+        assertThat(json.size()).isEqualTo(3);
+        assertThat(json.get("referencia").asText()).isEqualTo("5610440665");
+        assertThat(resultado.resultado().esExitoso()).isTrue();
+        assertThat(resultado.resultado().mensaje()).isEqualTo("Referencia Valida");
+        assertThat(resultado.saldo()).isEqualByComparingTo("1034.5");
+    }
+
+    @Test
+    void verifyReferenceRechazadaNoTraeSaldo() {
+        cuerpo = "<RESPONSE><MENSAJE><CODIGO>02</CODIGO><TEXTO>Referencia Invalida</TEXTO></MENSAJE></RESPONSE>";
+
+        GestoPagoReferenciaResultado resultado = integracion(url()).verificarReferencia(
+                new GestoPagoTxPayload(107, 271, "TMX0000", null, null, null, null, null), "token-x");
+
+        assertThat(resultado.resultado().esRechazado()).isTrue();
+        assertThat(resultado.resultado().codigo()).isEqualTo("02");
+        assertThat(resultado.saldo()).isNull();
     }
 
     @Test

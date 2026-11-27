@@ -11,11 +11,14 @@ import com.proyecto.servicios.exception.GlobalExceptionHandler;
 import com.proyecto.servicios.exception.SaldoInsuficienteException;
 import com.proyecto.servicios.exception.SegundoFactorInvalidoException;
 import com.proyecto.servicios.model.pagos.PagoResponse;
+import com.proyecto.servicios.model.pagos.ReferenciaResponse;
 import com.proyecto.servicios.model.pagos.SegundoFactorRegistroResponse;
 import com.proyecto.servicios.security.AutenticacionInterceptor;
 import com.proyecto.servicios.security.ControlAcceso;
 import com.proyecto.servicios.security.TokenService;
+import com.proyecto.servicios.service.PagoHistorialService;
 import com.proyecto.servicios.service.PagoService;
+import com.proyecto.servicios.service.ReferenciaService;
 import com.proyecto.servicios.service.SegundoFactorService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +44,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,6 +101,10 @@ class PagoHttpTest {
     private int port;
     @MockBean
     private PagoService pagoService;
+    @MockBean
+    private PagoHistorialService historialService;
+    @MockBean
+    private ReferenciaService referenciaService;
     @MockBean
     private SegundoFactorService segundoFactorService;
 
@@ -193,7 +201,7 @@ class PagoHttpTest {
 
     @Test
     void consultaElPagoDelClienteAutenticado() throws Exception {
-        when(pagoService.consultar(7, 10L)).thenReturn(respuesta(EstatusPago.EN_CONCILIACION));
+        when(historialService.consultarDetalle(7, 10L)).thenReturn(respuesta(EstatusPago.EN_CONCILIACION));
 
         HttpResponse<String> respuesta = send(HttpRequest.newBuilder(URI.create(url("/pagos/10")))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -204,9 +212,56 @@ class PagoHttpTest {
         assertThat(respuesta.body()).contains("EN_CONCILIACION");
     }
 
+    @Test
+    void elHistorialEsDelClienteAutenticadoYValidaLaPaginacion() throws Exception {
+        when(historialService.consultarHistorial(7, 1, 5)).thenReturn(List.of(respuesta(EstatusPago.APLICADO)));
+
+        HttpResponse<String> respuesta = get("/pagos?pagina=1&tamano=5", token);
+
+        assertThat(respuesta.statusCode()).isEqualTo(200);
+        JsonNode pagos = objectMapper.readTree(respuesta.body()).path("datos");
+        assertThat(pagos.isArray()).isTrue();
+        assertThat(pagos.get(0).path("servicio").asText()).isEqualTo("TELCEL");
+        assertThat(pagos.get(0).path("referencia").asText()).isEqualTo("5512345678");
+        assertThat(get("/pagos", null).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void verificaLaReferenciaYSoloLaValidaPermiteContinuar() throws Exception {
+        when(referenciaService.verificar(any())).thenReturn(new ReferenciaResponse(
+                ReferenciaResponse.Estado.INVALIDA, false, 108, 272, "AT&T", "Recarga", "000000000",
+                "02", "Referencia Invalida", null));
+        String cuerpoValido = """
+                {"idServicio":108,"idProducto":272,"referencia":"000000000"}
+                """;
+
+        HttpResponse<String> respuesta = post("/pagos/referencias/verificar", cuerpoValido, token, null);
+        HttpResponse<String> formatoInvalido = post("/pagos/referencias/verificar",
+                cuerpoValido.replace("000000000", "a b"), token, null);
+        HttpResponse<String> sinToken = post("/pagos/referencias/verificar", cuerpoValido, null, null);
+
+        assertThat(respuesta.statusCode()).isEqualTo(200);
+        JsonNode cuerpo = objectMapper.readTree(respuesta.body());
+        assertThat(cuerpo.path("codigo").asInt()).isEqualTo(1);
+        assertThat(cuerpo.path("datos").path("estado").asText()).isEqualTo("INVALIDA");
+        assertThat(cuerpo.path("datos").path("valida").asBoolean()).isFalse();
+        assertThat(formatoInvalido.statusCode()).isEqualTo(400);
+        assertThat(sinToken.statusCode()).isEqualTo(401);
+    }
+
+    private HttpResponse<String> get(String ruta, String bearer) throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url(ruta))).GET();
+        if (bearer != null) {
+            request.header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer);
+        }
+        return send(request.build());
+    }
+
     private PagoResponse respuesta(EstatusPago estatus) {
-        return new PagoResponse(10L, estatus, 14302, new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
-                estatus == EstatusPago.APLICADO ? "9001" : null, "01", "mensaje", LocalDateTime.now());
+        return new PagoResponse(10L, estatus, 2284, 14302, "TELCEL", "Recarga $100", "5512345678",
+                new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
+                estatus == EstatusPago.APLICADO ? "9001" : null, "01", "mensaje", LocalDateTime.now(),
+                LocalDateTime.now());
     }
 
     private HttpResponse<String> post(String ruta, String json, String bearer, String claveIdempotencia)

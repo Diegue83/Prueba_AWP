@@ -35,6 +35,15 @@ public class GlobalExceptionHandler {
     /** Todas las excepciones de negocio y de validación: cada una ya trae su código HTTP, clave y detalles. */
     @ExceptionHandler(NegocioException.class)
     public ResponseEntity<ErrorResponse> manejarNegocio(NegocioException ex) {
+        return responderNegocio(ex);
+    }
+
+    @ExceptionHandler(GestoPagoIntegracionException.class)
+    public ResponseEntity<ErrorResponse> manejarGestoPago(GestoPagoIntegracionException ex) {
+        return responderNegocio(ex);
+    }
+
+    private ResponseEntity<ErrorResponse> responderNegocio(ErrorNegocio ex) {
         log.warn("Petición rechazada [{}]: {} {}", ex.getClave(), ex.getMessage(), ex.getDetalles());
         return responder(ex.getEstatus(), ex.getClave(), ex.getMessage(), ex.getDetalles());
     }
@@ -74,8 +83,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> manejarJsonIlegible(HttpMessageNotReadableException ex) {
         Throwable causa = ex.getCause();
         while (causa != null) {
-            if (causa instanceof NegocioException negocio) {
-                return manejarNegocio(negocio);
+            if (causa instanceof ErrorNegocio negocio) {
+                return responderNegocio(negocio);
             }
             if (causa instanceof JsonMappingException mapeo && !mapeo.getPath().isEmpty()) {
                 String campo = obtenerRutaCampo(mapeo);

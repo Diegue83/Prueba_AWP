@@ -1,5 +1,6 @@
 package com.proyecto.servicios.service;
 
+import com.proyecto.servicios.repositorys.onboarding.CriteriosBusquedaCliente;
 import com.proyecto.servicios.config.OnboardingProperties;
 import com.proyecto.servicios.entity.onboarding.Cliente;
 import com.proyecto.servicios.enums.EstadoCivil;
@@ -45,10 +46,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.proyecto.servicios.service.NacionalidadService;
@@ -316,8 +315,7 @@ class ClienteServiceImplTest {
         LocalDate desde = LocalDate.parse("2025-01-01");
         LocalDate hasta = LocalDate.parse("2025-12-31");
         when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
-        when(clienteRepository.buscarPorCriterios(
-                1, null, CURP, RFC, CORREO, NUMERO_CUENTA, true, desde, hasta))
+        when(clienteRepository.buscarPorCriterios(any()))
                 .thenReturn(List.of(DatosDePrueba.clienteExistente("hash")));
         ClienteRequest criterios = new ClienteRequest();
         criterios.setCurp(CURP.toLowerCase());
@@ -333,8 +331,9 @@ class ClienteServiceImplTest {
 
         assertThat(resultados).hasSize(1);
         assertThat(((ClienteResponse) resultados.get(0)).getCurp()).isEqualTo(CURP);
-        verify(clienteRepository).buscarPorCriterios(
-                eq(1), eq(null), eq(CURP), eq(RFC), eq(CORREO), eq(NUMERO_CUENTA), eq(true), eq(desde), eq(hasta));
+        assertThat(criteriosEnviados()).usingRecursiveComparison().isEqualTo(CriteriosBusquedaCliente.builder()
+                .clienteId(1).curp(CURP).rfc(RFC).correo(CORREO).numeroCuenta(NUMERO_CUENTA).activo(true)
+                .fechaRegistroDesde(desde).fechaRegistroHasta(hasta).build());
     }
 
     @Test
@@ -342,9 +341,7 @@ class ClienteServiceImplTest {
         LocalDate desde = LocalDate.parse("2025-01-01");
         LocalDate hasta = LocalDate.parse("2025-12-31");
         when(controlAcceso.obtenerClienteAutenticado()).thenReturn(1);
-        when(clienteRepository.buscarPorCriterios(
-                1, null, null, null, null, null, true, desde, hasta))
-                .thenReturn(List.of());
+        when(clienteRepository.buscarPorCriterios(any())).thenReturn(List.of());
 
         ConsultaClienteRequest criterios = new ConsultaClienteRequest();
         criterios.setActivo(true);
@@ -352,8 +349,8 @@ class ClienteServiceImplTest {
         criterios.setFechaRegistroHasta(hasta);
 
         assertThat((List<?>) servicio.consultar(criterios).getDatos()).isEmpty();
-        verify(clienteRepository).buscarPorCriterios(
-                eq(1), eq(null), eq(null), eq(null), eq(null), eq(null), eq(true), eq(desde), eq(hasta));
+        assertThat(criteriosEnviados()).usingRecursiveComparison().isEqualTo(CriteriosBusquedaCliente.builder()
+                .clienteId(1).activo(true).fechaRegistroDesde(desde).fechaRegistroHasta(hasta).build());
     }
 
     @Test
@@ -365,8 +362,7 @@ class ClienteServiceImplTest {
         assertThatThrownBy(() -> servicio.consultar(criterios))
                 .isInstanceOf(ValidacionException.class)
                 .hasMessageContaining("rango de fechas");
-        verify(clienteRepository, never()).buscarPorCriterios(
-                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(clienteRepository, never()).buscarPorCriterios(any());
     }
 
     @Test
@@ -377,8 +373,7 @@ class ClienteServiceImplTest {
         assertThatThrownBy(() -> servicio.consultar(criterios))
                 .isInstanceOf(ValidacionException.class)
                 .hasFieldOrProperty("detalles");
-        verify(clienteRepository, never()).buscarPorCriterios(
-                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(clienteRepository, never()).buscarPorCriterios(any());
     }
 
     @Test
@@ -392,5 +387,11 @@ class ClienteServiceImplTest {
                 .isInstanceOf(ValidacionException.class);
         assertThatThrownBy(() -> servicio.consultarRegistradosEntre("01/02/2026", null))
                 .isInstanceOf(ValidacionException.class);
+    }
+
+    private CriteriosBusquedaCliente criteriosEnviados() {
+        ArgumentCaptor<CriteriosBusquedaCliente> captor = ArgumentCaptor.forClass(CriteriosBusquedaCliente.class);
+        verify(clienteRepository).buscarPorCriterios(captor.capture());
+        return captor.getValue();
     }
 }

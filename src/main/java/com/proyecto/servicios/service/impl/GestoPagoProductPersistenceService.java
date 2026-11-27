@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -33,15 +34,26 @@ public class GestoPagoProductPersistenceService {
      */
     @Transactional
     public void guardarCatalogo(List<GestoPagoProductoXml> productos) {
+        guardar(productos, GestoPagoProductoXml::getIdProducto, productMapper::updateEntity);
+    }
+
+    /** Carga en PostgreSQL el respaldo del catálogo guardado en Redis (misma lógica de inserción/actualización). */
+    @Transactional
+    public void guardarDesdeRespaldo(List<GestoPagoProducto> productos) {
+        guardar(productos, GestoPagoProducto::getIdProducto, productMapper::updateEntity);
+    }
+
+    private <T> void guardar(List<T> productos, Function<T, Integer> idProducto,
+                             BiConsumer<T, GestoPagoProduct> copiar) {
         Map<Integer, GestoPagoProduct> existentes = productRepository
-                .findAllById(productos.stream().map(GestoPagoProductoXml::getIdProducto).toList())
+                .findAllById(productos.stream().map(idProducto).toList())
                 .stream()
                 .collect(Collectors.toMap(GestoPagoProduct::getIdProducto, Function.identity()));
 
         List<GestoPagoProduct> entidades = productos.stream()
                 .map(producto -> {
-                    GestoPagoProduct entidad = existentes.getOrDefault(producto.getIdProducto(), new GestoPagoProduct());
-                    productMapper.updateEntity(producto, entidad);
+                    GestoPagoProduct entidad = existentes.getOrDefault(idProducto.apply(producto), new GestoPagoProduct());
+                    copiar.accept(producto, entidad);
                     return entidad;
                 })
                 .toList();

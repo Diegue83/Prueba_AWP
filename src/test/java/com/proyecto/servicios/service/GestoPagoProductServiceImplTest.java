@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -44,6 +45,7 @@ import static org.mockito.Mockito.when;
 class GestoPagoProductServiceImplTest {
 
     private static final String CACHE_KEY = "gestopago:productos:83:GPS83-TPV-17";
+    private static final String RESPALDO_KEY = CACHE_KEY + ":respaldo";
 
     @Mock
     private GestoPagoProductsIntegration productsIntegration;
@@ -200,6 +202,63 @@ class GestoPagoProductServiceImplTest {
 
         verify(persistenceService, never()).consultarCatalogo();
         verify(valueOperations, never()).set(anyString(), anyString(), any(Duration.class));
+        verify(valueOperations).set(eq(RESPALDO_KEY), contains("\"idProducto\":1"));
+    }
+
+    @Test
+    void siElRespaldoYaExisteNoSeReescribeAlIniciar() throws Exception {
+        when(persistenceService.existeCatalogo()).thenReturn(true);
+        String catalogo = objectMapper.writeValueAsString(List.of(producto(1)));
+        when(valueOperations.get(CACHE_KEY)).thenReturn(catalogo);
+        when(valueOperations.get(RESPALDO_KEY)).thenReturn(catalogo);
+
+        service.cargarCatalogoAlIniciar();
+
+        verify(valueOperations, never()).set(eq(RESPALDO_KEY), anyString());
+    }
+
+    @Test
+    void conUnaBaseNuevaVaciaRestauraElRespaldoDeRedisSinLlamarAGestoPago() throws Exception {
+        when(persistenceService.existeCatalogo()).thenReturn(false);
+        when(valueOperations.get(RESPALDO_KEY))
+                .thenReturn(objectMapper.writeValueAsString(List.of(producto(14302), producto(10034))));
+        when(persistenceService.consultarCatalogo()).thenReturn(List.of(producto(14302), producto(10034)));
+
+        service.cargarCatalogoAlIniciar();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<GestoPagoProducto>> restaurados = ArgumentCaptor.forClass(List.class);
+        verify(persistenceService).guardarDesdeRespaldo(restaurados.capture());
+        assertThat(restaurados.getValue()).extracting(GestoPagoProducto::getIdProducto).containsExactly(14302, 10034);
+        verify(valueOperations).set(eq(CACHE_KEY), anyString(), any(Duration.class));
+        verify(productsIntegration, never()).consultarCatalogoXml(anyString());
+        verify(tokenService, never()).obtenerTokenVigente();
+    }
+
+    @Test
+    void unaPeticionConLaBaseVaciaTambienUsaElRespaldoAntesQueGestoPago() throws Exception {
+        when(persistenceService.consultarCatalogo()).thenReturn(List.of(), List.of(), List.of(producto(14302)));
+        when(valueOperations.get(RESPALDO_KEY)).thenReturn(objectMapper.writeValueAsString(List.of(producto(14302))));
+
+        assertThat(service.consultarProductos()).extracting(GestoPagoProducto::getIdProducto).containsExactly(14302);
+
+        verify(persistenceService).guardarDesdeRespaldo(anyList());
+        verify(productsIntegration, never()).consultarCatalogoXml(anyString());
+    }
+
+    @Test
+    void unRespaldoVacioNoSeRestauraYSeDescargaDeGestoPago() {
+        when(persistenceService.existeCatalogo()).thenReturn(false);
+        when(valueOperations.get(RESPALDO_KEY)).thenReturn("[]");
+        when(tokenService.obtenerTokenVigente()).thenReturn(token("token"));
+        when(productsIntegration.consultarCatalogoXml("token")).thenReturn(GestoPagoProductXmlParserTest.XML_CATALOGO);
+        when(persistenceService.consultarCatalogo()).thenReturn(List.of(producto(14302)));
+
+        service.cargarCatalogoAlIniciar();
+
+        verify(persistenceService, never()).guardarDesdeRespaldo(anyList());
+        verify(persistenceService).guardarCatalogo(anyList());
+        verify(valueOperations).set(eq(RESPALDO_KEY), contains("\"idProducto\":14302"));
     }
 
     @Test

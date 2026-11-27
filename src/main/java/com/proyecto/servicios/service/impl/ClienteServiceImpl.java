@@ -14,6 +14,7 @@ import com.proyecto.servicios.model.onboarding.ClienteRequest;
 import com.proyecto.servicios.model.onboarding.ClienteResponse;
 import com.proyecto.servicios.model.onboarding.ConsultaClienteRequest;
 import com.proyecto.servicios.repositorys.onboarding.ClienteRepository;
+import com.proyecto.servicios.repositorys.onboarding.CriteriosBusquedaCliente;
 import com.proyecto.servicios.repositorys.onboarding.CuentaRepository;
 import com.proyecto.servicios.service.ClienteService;
 import com.proyecto.servicios.validation.ClienteValidador;
@@ -154,16 +155,17 @@ public class ClienteServiceImpl implements ClienteService {
 
         Integer clienteId = controlAcceso.obtenerClienteAutenticado();
         String correo = clienteMapper.normalizarCorreo(criterios.getCorreo());
-        List<ClienteResponse> clientes = clienteRepository.buscarPorCriterios(
-                        clienteId,
-                        criterios.getId(),
-                        normalizarIdentificador(criterios.getCurp()),
-                        normalizarIdentificador(criterios.getRfc()),
-                        correo,
-                        criterios.getNumeroCuenta(),
-                        criterios.getActivo(),
-                        criterios.getFechaRegistroDesde(),
-                        criterios.getFechaRegistroHasta())
+        List<ClienteResponse> clientes = clienteRepository.buscarPorCriterios(CriteriosBusquedaCliente.builder()
+                        .clienteId(clienteId)
+                        .id(criterios.getId())
+                        .curp(normalizarIdentificador(criterios.getCurp()))
+                        .rfc(normalizarIdentificador(criterios.getRfc()))
+                        .correo(correo)
+                        .numeroCuenta(criterios.getNumeroCuenta())
+                        .activo(criterios.getActivo())
+                        .fechaRegistroDesde(criterios.getFechaRegistroDesde())
+                        .fechaRegistroHasta(criterios.getFechaRegistroHasta())
+                        .build())
                 .stream()
                 .map(clienteMapper::aRespuesta)
                 .toList();

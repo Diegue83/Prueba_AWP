@@ -24,6 +24,8 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
 
     Optional<Pago> findByIdAndClienteId(Long id, Integer clienteId);
 
+    List<Pago> findByClienteIdOrderByFechaCreacionDescIdDesc(Integer clienteId, Pageable pagina);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
     @Query("SELECT p FROM Pago p WHERE p.id = :id")

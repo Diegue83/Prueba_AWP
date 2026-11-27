@@ -23,4 +23,10 @@ public interface GestoPagoTransaccionesClient {
             produces = {MediaType.TEXT_XML_VALUE, MediaType.APPLICATION_XML_VALUE})
     String confirmTx(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
                      @RequestBody Map<String, ?> formulario);
+
+    @PostMapping(value = "/sistema/service/verifyReference.do",
+            consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
+            produces = {MediaType.TEXT_XML_VALUE, MediaType.APPLICATION_XML_VALUE})
+    String verifyReference(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                           @RequestBody Map<String, ?> formulario);
 }

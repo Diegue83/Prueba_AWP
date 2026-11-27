@@ -11,7 +11,7 @@ import java.util.List;
  * método para todas en lugar de uno por excepción.
  */
 @Getter
-public abstract class NegocioException extends RuntimeException {
+public abstract class NegocioException extends RuntimeException implements ErrorNegocio {
 
     private final HttpStatus estatus;
     private final String clave;

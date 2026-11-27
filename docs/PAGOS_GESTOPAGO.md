@@ -155,6 +155,12 @@ nunca se envió responde código 70.
   Además, cada intento de descarga (exitoso o no) se registra en Redis y en memoria, y no se repite antes de
   `GESTOPAGO_PRODUCTOS_INTERVALO_DESCARGA_MINUTOS` (480 por omisión, es decir, máximo 3 al día), aunque
   el catálogo siga vacío y lleguen peticiones o reinicios.
+- Respaldo del catálogo: además del caché con TTL, el catálogo se guarda en Redis **sin caducidad** en
+  `gestopago:productos:{idDistribuidor}:{codigoDispositivo}:respaldo`. Se escribe después de cada descarga
+  exitosa y, al arrancar con catálogo en PostgreSQL, si todavía no existe. Si el backend arranca con una
+  base de datos vacía (por ejemplo, al cambiar de base), primero copia ese respaldo a PostgreSQL y solo si no
+  hay respaldo llama a `getProductList`. El respaldo contiene únicamente el catálogo: clientes, cuentas y
+  pagos viven solo en PostgreSQL y deben respaldarse con las herramientas de la base de datos.
 
 ## 8. Configuración
 

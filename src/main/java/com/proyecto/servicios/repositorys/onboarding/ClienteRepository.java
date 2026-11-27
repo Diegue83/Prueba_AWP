@@ -45,25 +45,17 @@ public interface ClienteRepository extends JpaRepository<Cliente, Integer> {
     List<Cliente> buscarRegistradosEntre(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
 
     @Query(SELECCION_COMPLETA
-            + "WHERE c.id = :clienteId "
-            + "AND (:id IS NULL OR c.id = :id) "
-            + "AND (:curp IS NULL OR c.curp = :curp) "
-            + "AND (:rfc IS NULL OR c.rfc = :rfc) "
-            + "AND (:correo IS NULL OR LOWER(c.correo) = LOWER(:correo)) "
-            + "AND (:numeroCuenta IS NULL OR cu.numeroCuenta = :numeroCuenta) "
-            + "AND (:activo IS NULL OR c.activo = :activo) "
-            + "AND (:desde IS NULL OR c.fechaRegistro >= :desde) "
-            + "AND (:hasta IS NULL OR c.fechaRegistro <= :hasta) "
+            + "WHERE c.id = :#{#c.clienteId} "
+            + "AND (:#{#c.id} IS NULL OR c.id = :#{#c.id}) "
+            + "AND (:#{#c.curp} IS NULL OR c.curp = :#{#c.curp}) "
+            + "AND (:#{#c.rfc} IS NULL OR c.rfc = :#{#c.rfc}) "
+            + "AND (:#{#c.correo} IS NULL OR LOWER(c.correo) = LOWER(:#{#c.correo})) "
+            + "AND (:#{#c.numeroCuenta} IS NULL OR cu.numeroCuenta = :#{#c.numeroCuenta}) "
+            + "AND (:#{#c.activo} IS NULL OR c.activo = :#{#c.activo}) "
+            + "AND (:#{#c.fechaRegistroDesde} IS NULL OR c.fechaRegistro >= :#{#c.fechaRegistroDesde}) "
+            + "AND (:#{#c.fechaRegistroHasta} IS NULL OR c.fechaRegistro <= :#{#c.fechaRegistroHasta}) "
             + "ORDER BY c.id")
-    List<Cliente> buscarPorCriterios(@Param("clienteId") Integer clienteId,
-                                    @Param("id") Integer id,
-                                    @Param("curp") String curp,
-                                    @Param("rfc") String rfc,
-                                    @Param("correo") String correo,
-                                    @Param("numeroCuenta") String numeroCuenta,
-                                    @Param("activo") Boolean activo,
-                                    @Param("desde") LocalDate desde,
-                                    @Param("hasta") LocalDate hasta);
+    List<Cliente> buscarPorCriterios(@Param("c") CriteriosBusquedaCliente criterios);
 
     // ---- Verificaciones de duplicados: solo preguntan "¿existe?", no traen la fila ----
 

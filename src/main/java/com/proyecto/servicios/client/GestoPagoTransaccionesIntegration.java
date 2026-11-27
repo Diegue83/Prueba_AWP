@@ -3,6 +3,7 @@ package com.proyecto.servicios.client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.proyecto.servicios.exception.GestoPagoAutenticacionException;
+import com.proyecto.servicios.model.gestopago.GestoPagoReferenciaResultado;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxPayload;
 import com.proyecto.servicios.model.gestopago.GestoPagoTxResultado;
 import feign.FeignException;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 /**
@@ -24,6 +26,7 @@ public class GestoPagoTransaccionesIntegration {
 
     public static final String SEND_TX = "sendTx";
     public static final String CONFIRM_TX = "confirmTx";
+    public static final String VERIFY_REFERENCE = "verifyReference";
     private static final String BEARER = "Bearer ";
 
     private final GestoPagoTransaccionesClient client;
@@ -50,6 +53,15 @@ public class GestoPagoTransaccionesIntegration {
 
     public GestoPagoTxResultado confirmar(GestoPagoTxPayload payload, String token) {
         return invocar(CONFIRM_TX, payload, token, client::confirmTx);
+    }
+
+    public GestoPagoReferenciaResultado verificarReferencia(GestoPagoTxPayload payload, String token) {
+        AtomicReference<String> xml = new AtomicReference<>();
+        GestoPagoTxResultado resultado = invocar(VERIFY_REFERENCE, payload, token, (autorizacion, formulario) -> {
+            xml.set(client.verifyReference(autorizacion, formulario));
+            return xml.get();
+        });
+        return new GestoPagoReferenciaResultado(resultado, parser.saldo(xml.get()));
     }
 
     private GestoPagoTxResultado invocar(String operacion, GestoPagoTxPayload payload, String token,

@@ -257,20 +257,7 @@ public class PagoServiceImpl implements PagoService {
     }
 
     private PagoResponse aRespuesta(Pago pago) {
-        return new PagoResponse(pago.getId(), pago.getEstatus(), pago.getIdProducto(), pago.getMonto(),
-                pago.getComision(), pago.total(), pago.getNumAutorizacion(), pago.getCodigoRespuesta(), mensaje(pago.getEstatus()),
-                pago.getFechaActualizacion());
-    }
-
-    private String mensaje(EstatusPago estatus) {
-        return switch (estatus) {
-            case APLICADO -> "Pago realizado correctamente";
-            case RECHAZADO -> "El proveedor rechazó el pago; el monto se devolvió a tu cuenta";
-            case PENDIENTE, EN_CONCILIACION ->
-                    "El pago está en verificación con el proveedor; el monto queda retenido hasta confirmarlo";
-            case REVISION_MANUAL ->
-                    "El pago requiere revisión; el monto queda retenido. Contacta a soporte con el número de pago";
-        };
+        return PagoResponse.de(pago, null);
     }
 
     private String generarUpc() {

@@ -60,6 +60,36 @@ class GestoPagoProductPersistenceServiceTest {
     }
 
     @Test
+    void elRespaldoDeRedisSeGuardaConTodosLosDatosDelProducto() {
+        GestoPagoProducto respaldo = new GestoPagoProducto();
+        respaldo.setIdProducto(272);
+        respaldo.setIdServicio(108);
+        respaldo.setServicio("AT&T");
+        respaldo.setProducto("Recarga AT&T 100");
+        respaldo.setIdCatTipoServicio(3);
+        respaldo.setTipoFront(1);
+        respaldo.setTipoReferencia("a");
+        respaldo.setPrecio(new BigDecimal("100.00"));
+        respaldo.setLeyenda("Vigencia 30 días");
+        when(productRepository.findAllById(List.of(272))).thenReturn(List.of());
+        GestoPagoProductPersistenceService service = new GestoPagoProductPersistenceService(productRepository, mapper);
+
+        service.guardarDesdeRespaldo(List.of(respaldo));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<GestoPagoProduct>> guardados = ArgumentCaptor.forClass(List.class);
+        verify(productRepository).saveAll(guardados.capture());
+        GestoPagoProduct entidad = guardados.getValue().get(0);
+        assertThat(entidad.isNew()).isTrue();
+        assertThat(entidad.getIdServicio()).isEqualTo(108);
+        assertThat(entidad.getTipoFront()).isEqualTo(1);
+        assertThat(entidad.getTipoReferencia()).isEqualTo("a");
+        assertThat(entidad.getPrecio()).isEqualByComparingTo("100");
+        assertThat(entidad.getLeyenda()).isEqualTo("Vigencia 30 días");
+        assertThat(entidad.getHasDigitoVerificador()).isFalse();
+    }
+
+    @Test
     void consultaElCatalogoComoDto() {
         GestoPagoProduct entidad = new GestoPagoProduct();
         entidad.setIdProducto(14302);

@@ -41,6 +41,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
     private final String cacheKey;
     private final Duration cacheTtl;
     private final String intentoKey;
+    private final String respaldoKey;
     private final ReentrantLock candadoDescarga = new ReentrantLock();
     private volatile Instant ultimoIntentoDescarga;
 
@@ -66,6 +67,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         this.tipoCatalogo = objectMapper.getTypeFactory().constructCollectionType(List.class, GestoPagoProducto.class);
         this.cacheKey = CACHE_KEY_PREFIX + idDistribuidor + ":" + codigoDispositivo;
         this.intentoKey = cacheKey + ":ultimo-intento-descarga";
+        this.respaldoKey = cacheKey + ":respaldo";
         this.cacheTtl = Duration.ofSeconds(cacheTtlSeconds);
     }
 
@@ -93,22 +95,48 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
 
     /**
      * Al reiniciar no se vuelve a descargar ni a escribir el catálogo si ya está en PostgreSQL;
-     * solo se carga a Redis cuando ahí no existe.
+     * solo se carga a Redis cuando ahí no existe. Con la base vacía (por ejemplo, una base nueva)
+     * primero se restaura el respaldo de Redis y solo si no hay respaldo se llama a GestoPago.
      */
     @EventListener(ApplicationReadyEvent.class)
     public void cargarCatalogoAlIniciar() {
         try {
             if (!persistenceService.existeCatalogo()) {
-                sincronizarProductos();
-            } else if (leerCache().isEmpty()) {
-                guardarEnCache(persistenceService.consultarCatalogo());
+                if (restaurarDesdeRespaldo().isEmpty()) {
+                    sincronizarProductos();
+                }
+                return;
+            }
+            Optional<List<GestoPagoProducto>> enCache = leerCache();
+            if (enCache.isEmpty()) {
+                List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
+                guardarEnCache(productos);
+                asegurarRespaldo(productos);
                 log.info("Catálogo de GestoPago cargado de PostgreSQL a Redis");
             } else {
+                asegurarRespaldo(enCache.get());
                 log.info("Catálogo de GestoPago ya disponible en PostgreSQL y Redis");
             }
         } catch (GestoPagoIntegracionException e) {
             log.error("No se pudo cargar el catálogo de GestoPago al iniciar: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Copia el respaldo de Redis a PostgreSQL. Es la vía para poblar una base nueva sin depender
+     * de getProductList (limitado a 3 llamadas diarias por PuntoRed).
+     */
+    public Optional<List<GestoPagoProducto>> restaurarDesdeRespaldo() {
+        Optional<List<GestoPagoProducto>> respaldo = leerRespaldo().filter(productos -> !productos.isEmpty());
+        if (respaldo.isEmpty()) {
+            return Optional.empty();
+        }
+        persistenceService.guardarDesdeRespaldo(respaldo.get());
+        List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
+        guardarEnCache(productos);
+        log.warn("Catálogo de GestoPago restaurado en PostgreSQL desde el respaldo de Redis: {} productos",
+                productos.size());
+        return Optional.of(productos);
     }
 
     @Scheduled(cron = "${gestopago.productos.sync-cron:-}")
@@ -128,7 +156,11 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
                 guardarEnCache(productos);
                 return productos;
             }
-            log.info("No hay productos de GestoPago en PostgreSQL; se descargará el catálogo");
+            Optional<List<GestoPagoProducto>> restaurados = restaurarDesdeRespaldo();
+            if (restaurados.isPresent()) {
+                return restaurados.get();
+            }
+            log.info("No hay productos de GestoPago en PostgreSQL ni respaldo en Redis; se descargará el catálogo");
             return sincronizarProductos();
         } finally {
             candadoDescarga.unlock();
@@ -142,6 +174,7 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
             persistenceService.guardarCatalogo(xmlParser.parsear(descargarCatalogoXml()));
             List<GestoPagoProducto> productos = persistenceService.consultarCatalogo();
             guardarEnCache(productos);
+            guardarRespaldo(productos);
             return productos;
         } finally {
             candadoDescarga.unlock();
@@ -206,6 +239,35 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
             redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(productos), cacheTtl);
         } catch (JsonProcessingException | RuntimeException e) {
             log.warn("No fue posible guardar el catálogo en Redis ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    private Optional<List<GestoPagoProducto>> leerRespaldo() {
+        try {
+            String json = redisTemplate.opsForValue().get(respaldoKey);
+            return json == null ? Optional.empty() : Optional.of(objectMapper.readValue(json, tipoCatalogo));
+        } catch (JsonProcessingException | RuntimeException e) {
+            log.warn("No fue posible leer el respaldo del catálogo en Redis ({})", e.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
+    /** Sin caducidad: debe sobrevivir aunque la base de datos se pierda. Nunca se reemplaza con una lista vacía. */
+    private void guardarRespaldo(List<GestoPagoProducto> productos) {
+        if (productos.isEmpty()) {
+            return;
+        }
+        try {
+            redisTemplate.opsForValue().set(respaldoKey, objectMapper.writeValueAsString(productos));
+        } catch (JsonProcessingException | RuntimeException e) {
+            log.warn("No fue posible guardar el respaldo del catálogo en Redis ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    private void asegurarRespaldo(List<GestoPagoProducto> productos) {
+        if (leerRespaldo().isEmpty()) {
+            guardarRespaldo(productos);
+            log.info("Respaldo del catálogo de GestoPago creado en Redis: {} productos", productos.size());
         }
     }
 }

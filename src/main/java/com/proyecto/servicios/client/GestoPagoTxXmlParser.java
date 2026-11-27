@@ -16,6 +16,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.StringReader;
+import java.math.BigDecimal;
 
 /**
  * Interpreta la respuesta de sendTx/confirmTx. El proveedor usa dos formas:
@@ -61,6 +62,20 @@ public class GestoPagoTxXmlParser {
         String idTx = texto(hijo(raiz, "ID_TX"));
 
         return new GestoPagoTxResultado(clasificar(codigo), codigo, descripcion, numAutorizacion, idTx);
+    }
+
+    /** SALDO de verifyReference (dentro de MENSAJE); null si no viene o no es un número. */
+    public BigDecimal saldo(String xml) {
+        if (xml == null || xml.isBlank()) {
+            return null;
+        }
+        try {
+            Element raiz = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml))).getDocumentElement();
+            String saldo = texto(hijo(hijo(raiz, "MENSAJE"), "SALDO"));
+            return saldo == null ? null : new BigDecimal(saldo.replace(",", ""));
+        } catch (ParserConfigurationException | SAXException | IOException | NumberFormatException e) {
+            return null;
+        }
     }
 
     private Tipo clasificar(String codigo) {
